@@ -1,0 +1,107 @@
+# For pvlib
+import pvlib
+import pandas as pd # 'as pd' to change alias from pandas to pd
+import matplotlib.pyplot as plt
+import pgeocode
+
+# For demandlib
+import datetime
+from datetime import time as settime
+import numpy as np
+from demandlib import bdew
+import demandlib.bdew as bdew
+import demandlib.particular_profiles as profiles
+from workalendar.europe import Germany
+
+## User Input ##
+if input('Eingeben: ') == 'y':
+    plz = input("PLZ eingeben: ")
+    anlage_groesse = input('Größe der PV-Anlage in kWp: ')
+    strom_bedarf = input("Jährliche Strombedarf in kWH: ")
+    strom_bedarf = float(strom_bedarf)
+    waerme_bedarf = input("Jährliche Wärmebedarf in kWH: ")
+    waerme_bedarf = float(waerme_bedarf)
+else: 
+    plz = 40599
+    anlage_groesse = 10 
+    strom_bedarf = 4000
+    waerme_bedarf = 20000
+
+## PV Ertrag - pvlib ##
+# Standort
+nomi = pgeocode.Nominatim('de') 
+a = nomi.query_postal_code(plz)
+latitude = a['latitude']
+longitude = a['longitude']
+
+# Get hourly solar irradiation and modeled PV power output from PVGIS
+data, meta, inputs = pvlib.iotools.get_pvgis_hourly(latitude, longitude, start=2016, end=2016, surface_tilt=35,
+                                                    pvcalculation=True, peakpower=anlage_groesse, mountingplace='building', loss = 0)  
+
+ertrag = data['P'].sum()
+print('Jahres Ertrag: ', round(ertrag/1000, 2), 'kWh')
+
+# Plot PV power
+plt.plot(data['P'])
+plt.show()
+
+## Stromprofil - demandlib ##
+# Get holidays
+cal = Germany()
+year = 2016
+holidays = dict(cal.holidays(year))
+
+ann_el_demand_per_sector = {
+    "h0": strom_bedarf,
+    "h0_dyn": strom_bedarf,
+}
+
+# read standard load profiles
+e_slp = bdew.ElecSlp(year, holidays=holidays)
+
+# multiply given annual demand with timeseries
+elec_demand = e_slp.get_profile(ann_el_demand_per_sector)
+
+# You will have to divide the result by 4 to get kWh. 
+print(elec_demand.sum() / 4)
+
+# Plot Stromprofil
+elec_demand_resampled = elec_demand.resample("h").mean() 
+ax = elec_demand_resampled.plot()
+ax.set_xlabel("Date")
+ax.set_ylabel("Power demand")
+plt.show()
+
+## Wärmeprofil - demandlib ##
+# Creates demand Data Frame with Datetime Index, row length matches length of data
+demand = pd.DataFrame(
+    index=pd.date_range(
+        datetime.datetime(year, 1, 1, 0), periods= len(data), freq="h"
+    )
+)
+
+# Single family house (efh: Einfamilienhaus)
+demand['efh'] = bdew.HeatBuilding(
+    demand.index,
+    holidays=holidays,
+    temperature=data['temp_air'],
+    shlp_type="EFH",
+    building_class=1,
+    wind_class=1,
+    annual_heat_demand=waerme_bedarf,
+    name="EFH",
+    ww_incl = True
+).get_bdew_profile()
+
+# Plot heat profile
+ax = demand['efh'].plot()
+ax.set_xlabel("Date")
+ax.set_ylabel("Heat demand in kW")
+plt.show()
+
+print("Annual consumption: \n{}".format(demand.sum()))
+
+
+
+
+
