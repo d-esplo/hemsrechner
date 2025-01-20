@@ -4,7 +4,7 @@ from datetime import timedelta
 def get_jahresenergiebedarf(baujahr, flaeche, anzahl_personen, strombedarf):
     ## Jahresenergiebedarf: 
     # Heizwärmebedarf & Heizlast
-    waerme_tabelle = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\waermebedarf.xlsx')
+    waerme_tabelle = pd.read_excel('./Inputs/waermebedarf.xlsx')
     waerme_tabelle.set_index('Baujahr', inplace=True)
     heizlast = waerme_tabelle.loc[baujahr, 'Heizlast [W/m^2]']*flaeche/1000 # in kW
     waermebedarf = waerme_tabelle.loc[baujahr, 'Wärmebedarf [kWh/m^2]']*flaeche # in kWh
@@ -37,25 +37,25 @@ def get_lastprofile(waermebedarf, strombedarf, twebedarf, flaeche, TRY_region, a
     if waermebedarf/flaeche < 40:
         # NEH
         bau = 'NEH'
-        energiefaktoren_heiz = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Heiz_Energiefaktoren_TRY2017_EFH_NEH.xlsx')
+        energiefaktoren_heiz = pd.read_excel('./Inputs/Heiz_Energiefaktoren_TRY2017_EFH_NEH.xlsx')
         energiefaktoren_heiz.set_index('Unnamed: 0', inplace=True)
         energiefaktoren_heiz.index.name = 'TRY'
-        energiefaktoren_strom = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Strom_Energiefaktoren_TRY2017_EFH_NEH.xlsx')
+        energiefaktoren_strom = pd.read_excel('./Inputs/Strom_Energiefaktoren_TRY2017_EFH_NEH.xlsx')
         energiefaktoren_strom.set_index('Unnamed: 0', inplace=True)
         energiefaktoren_strom.index.name = 'TRY'
-        energiefaktoren_twe = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\TWE_Energiefaktoren_TRY2017_EFH_NEH.xlsx')
+        energiefaktoren_twe = pd.read_excel('./Inputs/TWE_Energiefaktoren_TRY2017_EFH_NEH.xlsx')
         energiefaktoren_twe.set_index('Unnamed: 0', inplace=True)
         energiefaktoren_twe.index.name = 'TRY'
     else:
         # Bestand
         bau = 'Bestand'
-        energiefaktoren_heiz = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Heiz_Energiefaktoren_TRY2017_EFH_Bestand.xlsx')
+        energiefaktoren_heiz = pd.read_excel('./Inputs/Heiz_Energiefaktoren_TRY2017_EFH_Bestand.xlsx')
         energiefaktoren_heiz.set_index('Unnamed: 0', inplace=True)
         energiefaktoren_heiz.index.name = 'TRY'
-        energiefaktoren_strom = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Strom_Energiefaktoren_TRY2017_EFH_Bestand.xlsx')
+        energiefaktoren_strom = pd.read_excel('./Inputs/Strom_Energiefaktoren_TRY2017_EFH_Bestand.xlsx')
         energiefaktoren_strom.set_index('Unnamed: 0', inplace=True)
         energiefaktoren_strom.index.name = 'TRY'
-        energiefaktoren_twe = pd.read_excel('C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\TWE_Energiefaktoren_TRY2017_EFH_Bestand.xlsx')
+        energiefaktoren_twe = pd.read_excel('./Inputs/TWE_Energiefaktoren_TRY2017_EFH_Bestand.xlsx')
         energiefaktoren_twe.set_index('Unnamed: 0', inplace=True)
         energiefaktoren_twe.index.name = 'TRY'
 
@@ -87,11 +87,11 @@ def get_lastprofile(waermebedarf, strombedarf, twebedarf, flaeche, TRY_region, a
     ## Referenzlastprofile Tabellen einlesen
     # Pfad zur Excel-Datei
     if bau == 'Bestand':
-        excel_rlp = 'C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Referenzlastprofile_EFH_Bestand_15_Min.xlsx'
-        excel_verteilung = 'C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Typtagverteilung_TRY_Bestand.xlsx'
+        excel_rlp = './Inputs/Referenzlastprofile_EFH_Bestand_15_Min.xlsx'
+        excel_verteilung = './Inputs/Typtagverteilung_TRY_Bestand.xlsx'
     else:
-        excel_rlp = 'C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Referenzlastprofile_EFH_NEH_15_Min.xlsx'
-        excel_verteilung = 'C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\Typtagverteilung_TRY_NEH.xlsx'
+        excel_rlp = './Inputs/Referenzlastprofile_EFH_NEH_15_Min.xlsx'
+        excel_verteilung = './Inputs/Typtagverteilung_TRY_NEH.xlsx'
     
     # Alle Tabellen in einem Dictionary einlesen
     referenzlastprofile = pd.read_excel(excel_rlp, sheet_name=None)

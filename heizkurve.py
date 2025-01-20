@@ -68,7 +68,7 @@ def get_heizleistung(T_n_aussen, wp_groesse, T_soll):
 
 def get_cop(wp_groesse, T_aussen_df, T_vor_df):
     # COP Tabelle einlesen
-    COP = pd.read_csv(pd.read_csv(f'C:\\Users\\DianaEspinosaLozano\\Desktop\\Thesis\\Inputs\\COP_Nibe F2040-{wp_groesse}.csv'))
+    COP = pd.read_csv(pd.read_csv(f'./Inputs/COP_Nibe F2040-{wp_groesse}.csv'))
 
     # Initialize the result list for COPs
     df = pd.DataFrame

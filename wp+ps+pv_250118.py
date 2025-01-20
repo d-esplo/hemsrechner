@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # eigene Module:
-import pv_profil, lastprofile_VDI4655, temperatur_aussen, try_region, heizkurve
+import pv_profil, lastprofile_VDI4655, temperatur_aussen, try_region, heizkurve, berechnen_pvwpps
+
 
 
 ## Abfrage - Inputs
@@ -89,74 +90,3 @@ c_wasser = 4.18 # kJ/(kg·K)
 Q_ps = round(V_ps*dichte*c_wasser*(T_n_vor - T_n_rueck)/3600, 3)
 
 ## WP und PS Zusammenfügen
-lastprofil_h['Wärmegehalt PS'] = np.nan
-lastprofil_h['Ladezustand PS'] = np.nan
-lastprofil_h['Heizleistung neu'] = np.nan
-lastprofil_h['temp_mittel'] = lastprofil_h['T_aussen'].rolling(window=48, min_periods=1).mean()
-lastprofil_h['Wärmebedarf_mittel'] = lastprofil_h['Wärmebedarf'].rolling(window=48, min_periods=1).mean()
-
-# Set 1. Reihe 
-t_amb.iloc[0, t_amb.columns.get_loc('Wärmegehalt PS')] = Q_ps  
-t_amb.iloc[0, t_amb.columns.get_loc('Ladezustand PS')] = 1 
-t_amb.iloc[0, t_amb.columns.get_loc('Heizleistung neu')] = t_amb.iloc[0, t_amb.columns.get_loc('Heizleistung')]
-
-for time in t_amb.index[1:]:  # ab der zweiten Zeile
-    previous_time = time - pd.Timedelta(hours=1)
-    
-    # Bedingungsüberprüfung und Debugging
-    # print(f"Verarbeite Zeitstempel: {time}, vorheriger Zeitstempel: {previous_time}")
-    # print(f"Wärmegehalt PS (vorher): {t_amb.loc[previous_time, 'Wärmegehalt PS']}, Wärmebedarf: {t_amb.loc[time, 'Wärmebedarf']}")
-    
-    if t_amb.loc[time, 'temp_mittel'] <= 15: #and t_amb.loc[time, 'Wärmebedarf_mittel'] >= 1.8:
-        if t_amb.loc[time, 'Wärmebedarf'] == 0:
-            t_amb.loc[time, 'Heizleistung neu'] = 0
-            t_amb.loc[time, 'Wärmegehalt PS'] = t_amb.loc[previous_time, 'Wärmegehalt PS'] - t_amb.loc[time, 'Wärmebedarf'] - PS_verlust
-        elif t_amb.loc[time, 'Wärmebedarf'] > t_amb.loc[time, 'Heizleistung']:
-            t_amb.loc[time, 'Heizleistung neu'] = t_amb.loc[time, 'Wärmebedarf']
-            t_amb.loc[time, 'Wärmegehalt PS'] = t_amb.loc[previous_time, 'Wärmegehalt PS'] - t_amb.loc[time, 'Wärmebedarf'] - PS_verlust + t_amb.loc[time, 'Heizleistung neu']
-        elif t_amb.loc[previous_time, 'Wärmegehalt PS'] > t_amb.loc[time, 'Wärmebedarf']:
-            # print("Wärmegehalt PS > Wärmebedarf, Heizleistung neu = 0")
-            t_amb.loc[time, 'Heizleistung neu'] = 0
-            t_amb.loc[time, 'Wärmegehalt PS'] = t_amb.loc[previous_time, 'Wärmegehalt PS'] - t_amb.loc[time, 'Wärmebedarf'] - PS_verlust
-        elif t_amb.loc[previous_time, 'Wärmegehalt PS'] < t_amb.loc[time, 'Wärmebedarf']:
-            # print("Wärmegehalt PS < Wärmebedarf...")
-            if Q_ps - t_amb.loc[previous_time, 'Wärmegehalt PS'] > t_amb.loc[time, 'Heizleistung']:
-                # print("Q_ps - Wärmegehalt PS > Heizleistung, Heizleistung neu angepasst")
-                t_amb.loc[time, 'Heizleistung neu'] = t_amb.loc[time, 'Heizleistung'] + Q_ps - t_amb.loc[previous_time, 'Wärmegehalt PS']
-                t_amb.loc[time, 'Wärmegehalt PS'] = t_amb.loc[previous_time, 'Wärmegehalt PS'] + t_amb.loc[time, 'Heizleistung neu'] - t_amb.loc[time, 'Wärmebedarf'] - PS_verlust
-                # print("Heizleistung neu = Heizleistung + Lade PS mehr")
-            else:
-                # print("Heizleistung neu = Heizleistung")
-                t_amb.loc[time, 'Heizleistung neu'] = t_amb.loc[time, 'Heizleistung']
-                t_amb.loc[time, 'Wärmegehalt PS'] = t_amb.loc[previous_time, 'Wärmegehalt PS'] + t_amb.loc[time, 'Heizleistung neu'] - t_amb.loc[time, 'Wärmebedarf'] - PS_verlust
-    else:
-        # print("T_mittel > 15° <- wird nicht geheizt")
-        t_amb.loc[time, 'Heizleistung neu'] = 0
-        t_amb.loc[time, 'Wärmegehalt PS'] = t_amb.loc[previous_time, 'Wärmegehalt PS'] - PS_verlust 
-
-    # Wärmegehalt darf nicht negativ sein
-    if t_amb.loc[time, 'Wärmegehalt PS'] <= 0:
-        t_amb.loc[time, 'Wärmegehalt PS'] = 0
-
-    # Berechnung des Ladezustands
-    ladezustand = t_amb.loc[time, 'Wärmegehalt PS'] / Q_ps
-    if ladezustand > 1:
-        # print("Ladezustand > 1, setze Ladezustand auf 1")
-        t_amb.loc[time, 'Ladezustand PS'] = 1
-    elif ladezustand <= 0:
-        # print(f"Ladezustand <= 0, setzte 0")
-        t_amb.loc[time, 'Ladezustand PS'] = 0
-    else:
-        t_amb.loc[time, 'Ladezustand PS'] = ladezustand
-
-t_amb.loc[t_amb['Heizleistung neu'] == 0, 'COP'] = 0
-# Filtere die Werte, bei denen Heizleistung neu > 0
-cop_filtered = t_amb[t_amb['Heizleistung neu'] > 0]['COP']
-cop_mean = cop_filtered.mean()
-
-t_amb['elekt. Leistungaufnahme'] = t_amb['Heizleistung neu']/t_amb['COP']
-t_amb['therm. Entnahmelesitung'] = t_amb['Heizleistung'] - t_amb['elekt. Leistungaufnahme']
-
-print('P_el [kW/a]: ', round(t_amb['elekt. Leistungaufnahme'].sum(), 2))
-print('Stromkosten WP [€/a]:', round(t_amb['elekt. Leistungaufnahme'].sum()*0.358, 2)) # Strompreis Dezember 24 Bestandkunden €/kWh
-print('COP: ', round(cop_mean, 2))
