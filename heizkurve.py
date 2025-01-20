@@ -21,17 +21,17 @@ def get_heizkurve(heizung, T_aussen, T_n_aussen):
         p = 1.3
         T_m_n_ueber = (T_n_vor-T_n_rueck)/(np.log((T_n_vor-T_soll)/(T_n_rueck-T_soll)))
 
-    heizkurve = pd.DataFrame
+    heizkurve = pd.DataFrame()
     heizkurve['T_aussen'] = T_aussen
-    heizkurve['Lastverhältnis'] = np.divide(T_soll-heizkurve['temp'], T_soll-T_n_aussen)
+    heizkurve['Lastverhältnis'] = np.divide(T_soll-heizkurve['T_aussen'], T_soll-T_n_aussen)
     heizkurve['e^x'] = np.exp(np.divide((heizkurve['Lastverhältnis']**(p-1/p))*(T_n_vor-T_n_rueck), T_m_n_ueber))
     heizkurve['T_vor'] = np.divide(heizkurve['e^x']*((T_n_vor-T_n_rueck)*heizkurve['Lastverhältnis']+T_soll)-T_soll, heizkurve['e^x']-1)
     heizkurve['T_rueck'] = heizkurve['T_vor']-heizkurve['Lastverhältnis']*(T_n_vor-T_n_rueck)
     return heizkurve, T_soll, T_n_vor, T_n_rueck
 
 def plot_heizkurve(heizkurve):
-    plt.plot(heizkurve['temp'], heizkurve['T_vor'], label = 'Vorlauftempeteratur')
-    plt.plot(heizkurve['temp'], heizkurve['T_rueck'], label = 'Rücklauftemperatur')
+    plt.plot(heizkurve['T_aussen'], heizkurve['T_vor'], label = 'Vorlauftempeteratur')
+    plt.plot(heizkurve['T_aussen'], heizkurve['T_rueck'], label = 'Rücklauftemperatur')
     plt.xlabel('Außentemperatur [°C]')
     plt.ylabel('T_vorlauf/T_ruecklauf [°C]')
     plt.title('Heizkurve')
@@ -71,7 +71,7 @@ def get_cop(wp_groesse, T_aussen_df, T_vor_df):
     COP = pd.read_csv(pd.read_csv(f'./Inputs/COP_Nibe F2040-{wp_groesse}.csv'))
 
     # Initialize the result list for COPs
-    df = pd.DataFrame
+    df = pd.DataFrame()
     df['T_aussen'] = T_aussen_df
     df['T_vor'] = T_vor_df
     df['COP'] = None
