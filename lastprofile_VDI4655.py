@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import timedelta
 
-def get_jahresenergiebedap(baujahr, flaeche, anzahl_personen, strombedarf):
+def get_jahresenergiebedarf(baujahr, flaeche, anzahl_personen, strombedarf):
     ## Jahresenergiebedarf: 
     # Heizwärmebedarf & Heizlast
     waerme_tabelle = pd.read_excel('./Inputs/waermebedarf.xlsx')
