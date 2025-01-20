@@ -54,6 +54,7 @@ else:
 heizkennlinie, T_soll, T_n_vor, T_n_rueck = heizkurve.get_heizkurve(heizung, lastprofil_h['T_aussen'], T_n_aussen)
 lastprofil_h['T_vor'] = heizkennlinie['T_vor']
 lastprofil_h['T_rueck'] = heizkennlinie['T_rueck']
+# Plot  mit heizkurve.plot_heizkurve(heizkurve) 
 
 ## Heizleistung Auslegung & Theoretisch
 heizleistung = heizkurve.get_heizleistung(T_n_aussen, wp_groesse, T_soll)
