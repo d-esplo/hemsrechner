@@ -11,7 +11,7 @@ def get_pv_profil(plz, jahr, anlage_groesse):
 
     ## PV Jahresprofil 
     # Get hourly solar irradiation and modeled PV power output from PVGIS
-    data = pvlib.iotools.get_pvgis_hourly(latitude, longitude, start=jahr, end=jahr, surface_tilt=35,
+    data, meta, inputs = pvlib.iotools.get_pvgis_hourly(latitude, longitude, start=jahr, end=jahr, surface_tilt=35,
                                                         pvcalculation=True, peakpower=anlage_groesse, mountingplace='building')  
     pv_ertrag = data['P']
     pv_ertrag =pv_ertrag.resample('h').sum()
