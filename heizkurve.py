@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt 
+from scipy.spatial import KDTree, cKDTree
 
 def get_heizkurve(heizung, T_aussen, T_n_aussen):
     ## Die Heizkurve beschreibt den Zusammenhang zwischen Außentemperatur und Vorlauftemperatur. 
@@ -55,46 +56,61 @@ def get_heizleistung(T_n_aussen, wp_groesse, T_soll):
     heizwaerme_theoretisch = lastverhaeltnis*wp_groesse
 
     # DataFrame erstellen
-    auslegungs_heizleistung = pd.DataFrame({
+    heizleistung_auslegung = pd.DataFrame({
         'T_aussen': index,
         'Lastverhältnis': lastverhaeltnis,
         'Heizleistung Auslegung': heizwaerme_auslegung,
         'Heizleistung Theoretisch': heizwaerme_theoretisch
     }, index=index)
+    # hier enthalten index und Spalte T_aussen die T_aussen
+    return heizleistung_auslegung
 
-    # T_aussen-Spalte entfernen, da diese im Index enthalten ist
-    auslegungs_heizleistung.drop(columns='T_aussen', inplace=True)
-    return auslegungs_heizleistung
+def plot_heizleistung(heizleistung_auslegung):
+    # Heizleistung in Abhängigkeit der Außentemperatur
+    plt.plot(heizleistung_auslegung['Heizleistung Auslegung'], label = 'Heizleistung Auslegung [kW]')
+    plt.plot(heizleistung_auslegung['Heizleistung Theoretisch'], label = 'Heizleistung Theoretisch [kW]')
 
-def get_cop(wp_groesse, T_aussen_df, T_vor_df):
-    # COP Tabelle einlesen
-    COP = pd.read_csv(pd.read_csv(f'./Inputs/COP_Nibe F2040-{wp_groesse}.csv'))
+    plt.xlabel('Außentemperatur [°C]')
+    plt.ylabel('Heizleistung [kW]')
+    plt.title('Heizleistung in Abhängigkeit der Außentemperatur')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+    return plt
 
-    # Initialize the result list for COPs
-    df = pd.DataFrame()
-    df['T_aussen'] = T_aussen_df
-    df['T_vor'] = T_vor_df
+def get_heizleistung_profil(df, heizleistung_auslegung):
+    # Ensure T_aussen is numeric
+    heizleistung_auslegung = heizleistung_auslegung.sort_values('T_aussen')
+    tree = KDTree(heizleistung_auslegung['T_aussen'].values.reshape(-1, 1))
+
+    # Find the nearest neighbors
+    distances, indices = tree.query(df['T_aussen'].values.reshape(-1, 1))
+    df['Heizleistung'] = heizleistung_auslegung.iloc[indices]['Heizleistung Auslegung'].values
+    return df['Heizleistung']
+
+def get_cop(wp_groesse, df):
+    # Load the COP table
+    COP = pd.read_csv(f'./Inputs/COP_Nibe F2040-{wp_groesse}.csv', index_col=0)
+
+    # Ensure index and columns are floats
+    COP.index = COP.index.astype(float)
+    COP.columns = COP.columns.astype(float)
+
     df['COP'] = None
 
-    # Iterate over rows in t_amb to find the closest COP for each row
     for i, row in df.iterrows():
         T_aussen = row['T_aussen']
         T_vor = row['T_vor']
-        
-        # Initialize variables to find the closest point
-        naechster_cop = None
-        kleinster_abstand = float('inf')  # Start with an infinitely large distance
-        
-        # Iterate over interpolated_df index (ambient temp) and columns (water temp)
-        for x in COP.index:
-            for y in COP.columns:
-                abstand = abs(x - T_aussen) + abs(y - T_vor)  # Combined distance
-                
-                # Update if the current distance is the smallest
-                if abstand < kleinster_abstand:
-                    kleinster_abstand = abstand
-                    naechster_cop = COP.loc[x, y]
-        
-        # Assign the closest COP value to the current row
-        df.at[i, 'COP'] = naechster_cop
+
+        # Check for nearest values
+        if T_aussen not in COP.index:
+            T_aussen = min(COP.index, key=lambda x: abs(x - T_aussen))
+        if T_vor not in COP.columns:
+            T_vor = min(COP.columns, key=lambda x: abs(x - T_vor))
+
+        try:
+            df.at[i, 'COP'] = COP.loc[T_aussen, T_vor]
+        except KeyError:
+            df.at[i, 'COP'] = np.nan  # Handle missing data gracefully
+
     return df['COP']

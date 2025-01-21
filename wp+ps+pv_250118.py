@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # eigene Module:
-import pv_profil, lastprofile_VDI4655, temperatur_aussen, try_region, heizkurve, berechnen_pvwpps
-
+import pv_profil, lastprofile_VDI4655, temperatur_aussen, try_region, heizkurve, berechnen_wp
 
 
 ## Abfrage - Inputs
@@ -33,22 +32,10 @@ lastprofil_h['T_aussen'] = t_aussen
 
 ## Lastprofile erstellen
 lastprofil = lastprofile_VDI4655.get_lastprofile(waermebedarf, strombedarf, twebedarf, flaeche, TRY_region, anzahl_personen)
-lastprofil_res = lastprofil.resample('h').sum()
-lastprofil_h= lastprofil_h.join(lastprofil_res)
+lastprofil_h= lastprofil_h.join(lastprofil)
 
 ## WP Größe
-if heizlast <= 7:
-    wp_groesse = 6
-    wp = 'Nibe F2040-6'
-elif heizlast <= 9:
-    wp_groesse = 8
-    wp = 'Nibe F2040-8'
-elif heizlast <=13:
-    wp_groesse = 12
-    wp = 'Nibe F2040-12'
-else:
-    wp_groesse = 16
-    wp = 'Nibe F2040-16'
+wp_groesse = berechnen_wp.get_waermepumpe(heizlast)
 
 ## Heizkurve
 heizkennlinie, T_soll, T_n_vor, T_n_rueck = heizkurve.get_heizkurve(heizung, lastprofil_h['T_aussen'], T_n_aussen)
@@ -58,36 +45,28 @@ lastprofil_h['T_rueck'] = heizkennlinie['T_rueck']
 
 ## Heizleistung Auslegung & Theoretisch
 heizleistung = heizkurve.get_heizleistung(T_n_aussen, wp_groesse, T_soll)
-lastprofil_h['Heizleistung'] = heizleistung['Heizleistung Auslegung']
+heizleistung_auslegung = heizkurve.get_heizleistung_profil(lastprofil_h, heizleistung)
+# Plot Heizleistung in Abhängigkeit der Außentemperatur: heizkurve.plot_heizleistung
+lastprofil_h['Heizleistung'] = heizleistung_auslegung['Heizleistung Auslegung']
 
-## COP
-lastprofil_h['COP'] = heizkurve.get_cop(wp_groesse, lastprofil_h['T_aussen'], lastprofil_h['T_vor'])
+## COP für T_vor und T_aussen
+lastprofil_h['COP'] = heizkurve.get_cop(wp_groesse, lastprofil_h)
 
-## Pufferspeicher Größe
-V_ps_einfach = 20 * heizlast 
-VPS_100 = 100
-VPS_200 = 200
-VIH_300 = 300
-TWL_PR_500 = 500
-
-if V_ps_einfach > VPS_200:
-    if V_ps_einfach <= VIH_300:
-        V_ps = VIH_300
-        PS_verlust = 1.52/24 # kWh/24h
-    else:
-        V_ps = TWL_PR_500
-        PS_verlust = 1.4/24 # kWh/24h
-elif V_ps_einfach <= VPS_200:
-    if V_ps_einfach <= VPS_100:
-        V_ps = VPS_100
-        PS_verlust = 0.81/24 # kWh/24h
-    else:
-        V_ps= VPS_200
-        PS_verlust = 1.4/24 # kWh/24h
-
-## Wärmegehalt Pufferspeicher
-dichte = 1 # kg/m^3
-c_wasser = 4.18 # kJ/(kg·K)
-Q_ps = round(V_ps*dichte*c_wasser*(T_n_vor - T_n_rueck)/3600, 3)
+## Pufferspeicher Größe, PS Verlust und Wärmegehalt
+V_ps, PS_verlust, Q_ps = berechnen_wp.get_pufferspeicher(heizlast, T_n_vor, T_n_rueck)
 
 ## WP und PS Zusammenfügen
+lastprofil_h, P_el, COP = berechnen_wp.ohne_pv(lastprofil_h, Q_ps, PS_verlust)
+print('Strombedarf WP: ', P_el)
+print('COP bzw. JAZ: ', COP)
+stromkosten = round(P_el*0.358, 2)
+print('Stromkosten: ', stromkosten)
+
+## WP und PV
+lastprofil_h, ersparniss = berechnen_wp.mit_pv(lastprofil_h, pv)
+print('Strom aus PV: ', )
+print('Strom aus Netz: ', )
+stromkosten_pv = round()
+print('Stromkosten mit PV: ', stromkosten_pv)
+print('Einsparung: ', stromkosten-stromkosten_pv)
+

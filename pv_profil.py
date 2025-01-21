@@ -14,6 +14,6 @@ def get_pv_profil(plz, jahr, anlage_groesse):
     data, meta, inputs = pvlib.iotools.get_pvgis_hourly(latitude, longitude, start=jahr, end=jahr, surface_tilt=35,
                                                         pvcalculation=True, peakpower=anlage_groesse, mountingplace='building')  
     pv_ertrag = data['P']
-    pv_ertrag =pv_ertrag.resample('h').sum()
+    pv_ertrag = pv_ertrag.resample('h').sum() / 1000 # in Stunden und kW
     
     return pv_ertrag
