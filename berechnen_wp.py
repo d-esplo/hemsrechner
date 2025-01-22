@@ -118,14 +118,23 @@ def ohne_pv(lastprofil_h, Q_ps, PS_verlust):
         df.at[time, 'Ladezustand PS'] = ladezustand_ps
         df.at[time, 'Heizleistung neu'] = heizleistung_neu
     
+    # Handle rows where Heizleistung neu == 0
     df.loc[df['Heizleistung neu'] == 0, 'COP'] = 0
-    # Filtere die Werte, bei denen Heizleistung neu > 0
-    cop_filtered = df[df['Heizleistung neu'] > 0]['COP']
-    COP = cop_filtered.mean()
+    df['COP'] = df['COP'].replace(0, np.nan).astype(float)
 
-    df['elekt. Leistungaufnahme'] = df['Heizleistung neu']/cop_filtered
+    # Calculate the mean COP for rows where Heizleistung neu > 0
+    cop_filtered = df[df['Heizleistung neu'] > 0]['COP']
+    COP = round(cop_filtered.mean(),2)
+
+    # Assign elekt. Leistungaufnahme using the full COP column
+    df['elekt. Leistungaufnahme'] = (df['Heizleistung neu'] / df['COP']).fillna(0).astype(float)
+
+    # Handle any potential division by zero
+    df['elekt. Leistungaufnahme'].fillna(0, inplace=True)
+
+    # Calculate therm. Entnahmelesitung
     df['therm. Entnahmelesitung'] = df['Heizleistung'] - df['elekt. Leistungaufnahme']
-    
+
     P_el = round(df['elekt. Leistungaufnahme'].sum(), 2)
     return df, P_el, COP
 
@@ -138,11 +147,11 @@ def mit_pv(df, pv):
     pv_aligned = pv.reindex(df.index)
 
     # Add PV data to the DataFrame
-    df['PV Ertrag'] = pv_aligned.values
+    df['PV Ertrag'] = pv_aligned.values.astype(float)
 
     # Initialize columns for surplus and WP energy from PV
-    df['Surplus'] = 0
-    df['WP P_el from PV'] = 0
+    df['Surplus'] = 0.0
+    df['WP P_el from PV'] = 0.0
 
     # Iterate through rows
     for i, row in df.iterrows():
@@ -154,22 +163,30 @@ def mit_pv(df, pv):
         if pv_ertrag >= strombedarf:
             surplus = pv_ertrag - strombedarf  # Remaining PV energy
             # Check if surplus can cover P_el for the WP
-            if surplus >= p_el_wp:
+            if surplus >= p_el_wp and p_el_wp > 0:
                 wp_p_el_from_pv = p_el_wp
                 surplus -= p_el_wp
-            else:
+            elif p_el_wp > 0:
                 wp_p_el_from_pv = surplus
                 surplus = 0
         else:
             surplus = 0
             wp_p_el_from_pv = 0
-        # Ensure WP P_el from PV doesn't exceed PV Ertrag
-        wp_p_el_from_pv = min(wp_p_el_from_pv, pv_ertrag)
         
         # Assign values to the DataFrame
-        df.at[i, 'Surplus'] = surplus
-        df.at[i, 'WP P_el from PV'] = wp_p_el_from_pv
-
+        df.at[i, 'Surplus'] = float(surplus)
+        df.at[i, 'WP P_el from PV'] = float(wp_p_el_from_pv)
     return df
 
+def kosten(df, strompreis):
+    if 'elekt. Leistungaufnahme' not in df.columns:
+        print("Error: Column 'elekt. Leistungaufnahme' is missing!")
+        print("Available columns:", df.columns)
+
+    kosten_ohne = df['elekt. Leistungaufnahme']*strompreis
+    kosten_ohne = round(kosten_ohne.sum(), 2)
+    kosten_mit = (df['elekt. Leistungaufnahme'] - df['WP P_el from PV'])*strompreis
+    kosten_mit = round(kosten_mit.sum(), 2)
+    ersparnis = round(kosten_ohne - kosten_mit, 2)
+    return kosten_ohne, kosten_mit, ersparnis
 

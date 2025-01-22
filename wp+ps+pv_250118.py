@@ -5,15 +5,22 @@ import numpy as np
 # eigene Module:
 import pv_profil, lastprofile_VDI4655, temperatur_aussen, try_region, heizkurve, berechnen_wp
 
-
 ## Abfrage - Inputs
-plz = input("PLZ eingeben: ")
-baujahr = input("Baujahr EFH eingeben: ")
-flaeche = input('Hausfläche ca.: ')
-heizung = input('Heizkörper oder Fußbodenheizung? ')
-anzahl_personen = input("Anzahl an Hausbewohner: ")
-strombedarf = input("Strombedarf [kW]: ")
-anlage_groesse = input('Größe der PV-Anlage in kWp: ')
+# plz = int(input("PLZ eingeben: "))
+# baujahr = str(input("Baujahr EFH eingeben: "))
+# flaeche = int(input('Hausfläche ca.: '))
+# heizung = str(input('Heizkörper oder Fußbodenheizung? '))
+# anzahl_personen = int(input("Anzahl an Hausbewohner: "))
+# strombedarf = int(input("Strombedarf [kW]: "))
+# anlage_groesse = int(input('Größe der PV-Anlage in kWp: '))
+
+plz = 40599
+baujahr = 'Nach 2002'
+flaeche = 200
+heizung = 'Fußbodenheizung'
+anzahl_personen = 3
+strombedarf = 0
+anlage_groesse = 10
 
 ## PV Profil
 jahr = 2014
@@ -45,28 +52,29 @@ lastprofil_h['T_rueck'] = heizkennlinie['T_rueck']
 
 ## Heizleistung Auslegung & Theoretisch
 heizleistung = heizkurve.get_heizleistung(T_n_aussen, wp_groesse, T_soll)
-heizleistung_auslegung = heizkurve.get_heizleistung_profil(lastprofil_h, heizleistung)
+lastprofil_h = heizkurve.get_heizleistung_profil(lastprofil_h, heizleistung)
 # Plot Heizleistung in Abhängigkeit der Außentemperatur: heizkurve.plot_heizleistung
-lastprofil_h['Heizleistung'] = heizleistung_auslegung['Heizleistung Auslegung']
 
 ## COP für T_vor und T_aussen
-lastprofil_h['COP'] = heizkurve.get_cop(wp_groesse, lastprofil_h)
+lastprofil_h = heizkurve.get_cop(wp_groesse, lastprofil_h)
 
 ## Pufferspeicher Größe, PS Verlust und Wärmegehalt
 V_ps, PS_verlust, Q_ps = berechnen_wp.get_pufferspeicher(heizlast, T_n_vor, T_n_rueck)
 
-## WP und PS Zusammenfügen
+## Lastprofil WP und PS
 lastprofil_h, P_el, COP = berechnen_wp.ohne_pv(lastprofil_h, Q_ps, PS_verlust)
 print('Strombedarf WP: ', P_el)
-print('COP bzw. JAZ: ', COP)
-stromkosten = round(P_el*0.358, 2)
-print('Stromkosten: ', stromkosten)
+print('COP bzw. JAZ: ', round(COP,2))
 
-## WP und PV
-lastprofil_h, ersparniss = berechnen_wp.mit_pv(lastprofil_h, pv)
-print('Strom aus PV: ', )
-print('Strom aus Netz: ', )
-stromkosten_pv = round()
-print('Stromkosten mit PV: ', stromkosten_pv)
-print('Einsparung: ', stromkosten-stromkosten_pv)
+## Lastprofil WP und PV
+lastprofil_h = berechnen_wp.mit_pv(lastprofil_h, pv)
+
+## Kosten und Ersparnis
+strompreis = 0.358
+kosten_ohne, kosten_mit, ersparnis = berechnen_wp.kosten(lastprofil_h, strompreis)
+print('Stromkosten WP ohne PV: ', kosten_ohne)
+print('Stromkosten WP mit PV: ', kosten_mit)
+print('Einsparung mit PV: ', ersparnis)
+
+
 

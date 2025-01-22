@@ -86,7 +86,7 @@ def get_heizleistung_profil(df, heizleistung_auslegung):
     # Find the nearest neighbors
     distances, indices = tree.query(df['T_aussen'].values.reshape(-1, 1))
     df['Heizleistung'] = heizleistung_auslegung.iloc[indices]['Heizleistung Auslegung'].values
-    return df['Heizleistung']
+    return df
 
 def get_cop(wp_groesse, df):
     # Load the COP table
@@ -113,4 +113,4 @@ def get_cop(wp_groesse, df):
         except KeyError:
             df.at[i, 'COP'] = np.nan  # Handle missing data gracefully
 
-    return df['COP']
+    return df
