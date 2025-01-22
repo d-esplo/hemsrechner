@@ -13,6 +13,7 @@ import pv_profil, lastprofile_VDI4655, temperatur_aussen, try_region, heizkurve,
 # anzahl_personen = int(input("Anzahl an Hausbewohner: "))
 # strombedarf = int(input("Strombedarf [kW]: "))
 # anlage_groesse = int(input('Größe der PV-Anlage in kWp: '))
+# strompreis = float(input('Strompreis in €: '))
 
 plz = 40599
 baujahr = 'Nach 2002'

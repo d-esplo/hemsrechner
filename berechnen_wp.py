@@ -178,15 +178,109 @@ def mit_pv(df, pv):
         df.at[i, 'WP P_el from PV'] = float(wp_p_el_from_pv)
     return df
 
-def kosten(df, strompreis):
-    if 'elekt. Leistungaufnahme' not in df.columns:
-        print("Error: Column 'elekt. Leistungaufnahme' is missing!")
-        print("Available columns:", df.columns)
-
+def kosten_pv(df, strompreis):
     kosten_ohne = df['elekt. Leistungaufnahme']*strompreis
     kosten_ohne = round(kosten_ohne.sum(), 2)
     kosten_mit = (df['elekt. Leistungaufnahme'] - df['WP P_el from PV'])*strompreis
     kosten_mit = round(kosten_mit.sum(), 2)
     ersparnis = round(kosten_ohne - kosten_mit, 2)
     return kosten_ohne, kosten_mit, ersparnis
+
+def mit_pvbs(df, pv, battery_capacity):
+    # Normalize timezones: remove the timezone for both indices
+    pv.index = pv.index.tz_localize(None)
+    df.index = pd.to_datetime(df.index)
+
+    # Align PV data with the DataFrame index
+    pv_aligned = pv.reindex(df.index).fillna(0)
+
+    # Add PV data to the DataFrame
+    df['PV Ertrag'] = pv_aligned.values.astype(float)
+
+    # Initialize columns for battery and WP calculations
+    df['battery_soc'] = 0.0
+    df['battery_charge'] = 0.0
+    df['battery_discharge'] = 0.0
+    df['grid_export'] = 0.0
+    df['pv_excess'] = 0.0
+    df['grid_import'] = 0.0
+    df['eigenverbrauch'] = 0.0
+    df['Surplus'] = 0.0
+    df['WP P_el from PV'] = 0.0
+
+    # Battery parameters
+    c_rate = 1
+    charge_efficiency = 0.96  # BYD HVS & HVM
+    discharge_efficiency = 0.96
+    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
+    min_soc = 1
+    max_soc = battery_capacity
+    battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
+
+    # Simulation loop
+    for i, row in df.iterrows():
+        strombedarf = row['Strombedarf']  # Strombedarf at current time
+        pv_ertrag = row['PV Ertrag']  # PV generation at current time
+        p_el_wp = row.get('elekt. Leistungaufnahme', 0)  # Electrical power for WP (default 0 if not present)
+
+        # Step 1: Calculate surplus after meeting Strombedarf
+        if pv_ertrag >= strombedarf:
+            surplus = pv_ertrag - strombedarf
+            eigenverbrauch = strombedarf
+        else:
+            surplus = 0
+            eigenverbrauch = pv_ertrag
+
+        # Step 2: Allocate surplus to WP (priority)
+        if surplus > 0 and p_el_wp > 0:
+            if surplus >= p_el_wp:
+                wp_p_el_from_pv = p_el_wp
+                surplus -= p_el_wp
+            else:
+                wp_p_el_from_pv = surplus
+                surplus = 0
+        else:
+            wp_p_el_from_pv = 0
+
+        # Step 3: Allocate remaining surplus to the battery
+        if surplus > 0:
+            charge_potential = surplus * charge_efficiency
+            charge_to_battery = min(charge_potential, max_soc - battery_soc)
+            battery_soc += charge_to_battery
+            surplus -= charge_to_battery / charge_efficiency
+        else:
+            charge_to_battery = 0
+
+        # Step 4: Any remaining surplus is exported to the grid
+        grid_export = surplus if surplus > 0 else 0
+
+        # Step 5: Handle grid import if there is a shortfall
+        shortfall = strombedarf - (pv_ertrag + wp_p_el_from_pv)
+        if shortfall > 0:
+            # Discharge battery to meet the shortfall, limited by discharging power and min_soc
+            discharge_needed = min(shortfall / discharge_efficiency, charging_power)
+            discharge_from_battery = min(discharge_needed, battery_soc - min_soc)
+            energy_from_battery = discharge_from_battery * discharge_efficiency
+            battery_soc -= discharge_from_battery
+
+            # Remaining shortfall after discharging battery
+            remaining_shortfall = shortfall - energy_from_battery
+            grid_import = max(remaining_shortfall, 0)
+        else:
+            discharge_from_battery = 0
+            grid_import = 0
+
+        # Update DataFrame
+        df.loc[i, 'battery_charge'] = charge_to_battery
+        df.loc[i, 'battery_discharge'] = discharge_from_battery
+        df.loc[i, 'grid_export'] = grid_export
+        df.loc[i, 'pv_excess'] = surplus
+        df.loc[i, 'grid_import'] = grid_import
+        df.loc[i, 'eigenverbrauch'] = eigenverbrauch + wp_p_el_from_pv
+        df.loc[i, 'Surplus'] = surplus
+        df.loc[i, 'WP P_el from PV'] = wp_p_el_from_pv
+        df.loc[i, 'battery_soc'] = battery_soc
+
+    return df
+
 
