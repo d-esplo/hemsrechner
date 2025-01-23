@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 
-year = 2016
-hours_per_year = 8784
+year = 2014
+hours_per_year = 8760
 
 # Function to generate and save car availability profiles for both homeoffice=True and homeoffice=False
 def generate_car_availability_profiles():
@@ -27,7 +27,7 @@ def generate_car_availability_profiles():
                     availability[i+start_hour:i+start_hour+trip_duration] = 0
 
         # Save the availability profile as a CSV file
-        profile_name = f'car_availability_homeoffice_{homeoffice}.csv'
+        profile_name = f'car_availability_homeoffice_{homeoffice}_{year}.csv'
         pd.DataFrame({'EV_at_home': availability}, index=date_index).to_csv(profile_name)
         print(f"Saved profile to {profile_name}")
 

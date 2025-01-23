@@ -1,10 +1,10 @@
 import pandas as pd
 import numpy as np
 
-year = 2016
-hours_per_year = 8784
-distance_to_work = 22  # km one way
-max_trip_distance = 100  # km for weekend trips
+year = 2014
+hours_per_year = 8760
+distance_to_work = 22  # km Einweg
+max_trip_distance = 100  # km Wochenendetrips
 
 # Function to generate and save car availability profiles with distances traveled for both homeoffice=True and homeoffice=False
 def generate_car_availability_distance_profile():
@@ -51,7 +51,7 @@ def generate_car_availability_distance_profile():
                         distance_travelled[i + return_hour] = trip_distance  # Return distance
 
         # Save the availability and distance traveled profile as a CSV file
-        profile_name = f'car_availability_homeoffice_{homeoffice}.csv'
+        profile_name = f'car_availability_homeoffice_{homeoffice}_{year}.csv'
         pd.DataFrame({'EV_at_home': availability, 'distance_travelled': distance_travelled}, index=date_index).to_csv(profile_name)
         print(f"Saved profile to {profile_name}")
 

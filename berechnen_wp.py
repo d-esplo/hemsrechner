@@ -52,9 +52,8 @@ def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
 
     return V_ps, PS_verlust, Q_ps
 
-def ohne_pv(lastprofil_h, Q_ps, PS_verlust):
+def ohne_pv(df, Q_ps, PS_verlust):
     ## WP und PS Zusammenfügen
-    df = lastprofil_h
     df['Wärmegehalt PS'] = np.nan
     df['Ladezustand PS'] = np.nan
     df['Heizleistung neu'] = np.nan
@@ -150,8 +149,9 @@ def mit_pv(df, pv):
     df['PV Ertrag'] = pv_aligned.values.astype(float)
 
     # Initialize columns for surplus and WP energy from PV
-    df['Surplus'] = 0.0
-    df['WP P_el from PV'] = 0.0
+    df['überschuss'] = 0.0
+    df['PV to WP'] = 0.0 # Elektrische Leistung für WP aus PV
+    df['eigenverbrauch'] = 0.0 
 
     # Iterate through rows
     for i, row in df.iterrows():
@@ -159,34 +159,34 @@ def mit_pv(df, pv):
         pv_ertrag = row['PV Ertrag']  # PV generation at current time
         p_el_wp = row['elekt. Leistungaufnahme']  # Electrical power for WP
 
-        # Calculate surplus after covering Strombedarf
+        # Step 1: Überschuss nach Strombedarf
         if pv_ertrag >= strombedarf:
-            surplus = pv_ertrag - strombedarf  # Remaining PV energy
-            # Check if surplus can cover P_el for the WP
-            if surplus >= p_el_wp and p_el_wp > 0:
-                wp_p_el_from_pv = p_el_wp
-                surplus -= p_el_wp
-            elif p_el_wp > 0:
-                wp_p_el_from_pv = surplus
-                surplus = 0
+            ueberschuss = pv_ertrag - strombedarf
+            eigenverbrauch = strombedarf
         else:
-            surplus = 0
-            wp_p_el_from_pv = 0
+            ueberschuss = 0
+            eigenverbrauch = pv_ertrag
+
+        # Step 2: Überschuss für WP (prio)
+        if ueberschuss > 0 and p_el_wp > 0:
+            if ueberschuss >= p_el_wp:
+                pv_to_wp = p_el_wp
+                ueberschuss -= p_el_wp
+                eigenverbrauch += pv_to_wp
+            else:
+                pv_to_wp = ueberschuss
+                ueberschuss = 0
+                eigenverbrauch += pv_to_wp
+        else:
+            pv_to_wp = 0
         
         # Assign values to the DataFrame
-        df.at[i, 'Surplus'] = float(surplus)
-        df.at[i, 'WP P_el from PV'] = float(wp_p_el_from_pv)
+        df.at[i, 'überschuss'] = float(ueberschuss)
+        df.at[i, 'PV to WP'] = float(pv_to_wp)
+        df.at[i, 'eigenverbrauch'] = float(eigenverbrauch)
     return df
 
-def kosten_pv(df, strompreis):
-    kosten_ohne = df['elekt. Leistungaufnahme']*strompreis
-    kosten_ohne = round(kosten_ohne.sum(), 2)
-    kosten_mit = (df['elekt. Leistungaufnahme'] - df['WP P_el from PV'])*strompreis
-    kosten_mit = round(kosten_mit.sum(), 2)
-    ersparnis = round(kosten_ohne - kosten_mit, 2)
-    return kosten_ohne, kosten_mit, ersparnis
-
-def mit_pvbs(df, pv, battery_capacity):
+def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
     # Normalize timezones: remove the timezone for both indices
     pv.index = pv.index.tz_localize(None)
     df.index = pd.to_datetime(df.index)
@@ -201,21 +201,23 @@ def mit_pvbs(df, pv, battery_capacity):
     df['battery_soc'] = 0.0
     df['battery_charge'] = 0.0
     df['battery_discharge'] = 0.0
-    df['grid_export'] = 0.0
-    df['pv_excess'] = 0.0
-    df['grid_import'] = 0.0
+    df['überschuss'] = 0.0
+    df['netzbezug'] = 0.0
     df['eigenverbrauch'] = 0.0
-    df['Surplus'] = 0.0
-    df['WP P_el from PV'] = 0.0
+    df['PV to WP'] = 0.0
 
     # Battery parameters
     c_rate = 1
     charge_efficiency = 0.96  # BYD HVS & HVM
     discharge_efficiency = 0.96
-    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
     min_soc = 1
     max_soc = battery_capacity
     battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
+
+    if anlage_groesse<battery_capacity:
+        battery_capacity = anlage_groesse
+    
+    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
 
     # Simulation loop
     for i, row in df.iterrows():
@@ -223,64 +225,129 @@ def mit_pvbs(df, pv, battery_capacity):
         pv_ertrag = row['PV Ertrag']  # PV generation at current time
         p_el_wp = row.get('elekt. Leistungaufnahme', 0)  # Electrical power for WP (default 0 if not present)
 
-        # Step 1: Calculate surplus after meeting Strombedarf
+         # Step 1: Überschuss 2 Strombedarf (Prio 1)
         if pv_ertrag >= strombedarf:
-            surplus = pv_ertrag - strombedarf
+            ueberschuss = pv_ertrag - strombedarf
             eigenverbrauch = strombedarf
         else:
-            surplus = 0
+            ueberschuss = 0
             eigenverbrauch = pv_ertrag
 
-        # Step 2: Allocate surplus to WP (priority)
-        if surplus > 0 and p_el_wp > 0:
-            if surplus >= p_el_wp:
-                wp_p_el_from_pv = p_el_wp
-                surplus -= p_el_wp
-            else:
-                wp_p_el_from_pv = surplus
-                surplus = 0
+        # Step 2: Überschuss 2 WP (Prio 2)
+        if ueberschuss >= p_el_wp:
+            ueberschuss -= p_el_wp
+            eigenverbrauch += p_el_wp 
+            pv_to_wp = eigenverbrauch if p_el_wp > 0 else 0.0
         else:
-            wp_p_el_from_pv = 0
+            pv_to_wp = ueberschuss 
+            ueberschuss = 0
 
-        # Step 3: Allocate remaining surplus to the battery
-        if surplus > 0:
-            charge_potential = surplus * charge_efficiency
+        # Step 3: Überschuss 2 BS (Prio 3)
+        if ueberschuss > 0:
+            charge_potential = ueberschuss * charge_efficiency
             charge_to_battery = min(charge_potential, max_soc - battery_soc)
             battery_soc += charge_to_battery
-            surplus -= charge_to_battery / charge_efficiency
+            ueberschuss -= (charge_to_battery / charge_efficiency)
+            eigenverbrauch += charge_to_battery
         else:
             charge_to_battery = 0
 
-        # Step 4: Any remaining surplus is exported to the grid
-        grid_export = surplus if surplus > 0 else 0
-
-        # Step 5: Handle grid import if there is a shortfall
-        shortfall = strombedarf - (pv_ertrag + wp_p_el_from_pv)
-        if shortfall > 0:
-            # Discharge battery to meet the shortfall, limited by discharging power and min_soc
-            discharge_needed = min(shortfall / discharge_efficiency, charging_power)
+        # Step 5: Strom von Netz?
+        energiemangel = strombedarf + p_el_wp - pv_ertrag
+        if energiemangel > 0:
+            # Entlade Batterie, um Energiemangel zu decken
+            discharge_needed = min(energiemangel / discharge_efficiency, charging_power)
             discharge_from_battery = min(discharge_needed, battery_soc - min_soc)
             energy_from_battery = discharge_from_battery * discharge_efficiency
             battery_soc -= discharge_from_battery
 
-            # Remaining shortfall after discharging battery
-            remaining_shortfall = shortfall - energy_from_battery
-            grid_import = max(remaining_shortfall, 0)
+            # Übrige Energiemangel nach Batterienetladung = Netzbezug
+            remaining_shortfall = energiemangel - energy_from_battery
+            netzbezug = max(remaining_shortfall, 0)
         else:
             discharge_from_battery = 0
-            grid_import = 0
+            netzbezug = 0
 
         # Update DataFrame
         df.loc[i, 'battery_charge'] = charge_to_battery
         df.loc[i, 'battery_discharge'] = discharge_from_battery
-        df.loc[i, 'grid_export'] = grid_export
-        df.loc[i, 'pv_excess'] = surplus
-        df.loc[i, 'grid_import'] = grid_import
-        df.loc[i, 'eigenverbrauch'] = eigenverbrauch + wp_p_el_from_pv
-        df.loc[i, 'Surplus'] = surplus
-        df.loc[i, 'WP P_el from PV'] = wp_p_el_from_pv
+        df.loc[i, 'überschuss'] = ueberschuss if ueberschuss > 0 else 0.0
+        df.loc[i, 'eigenverbrauch'] = eigenverbrauch
+        df.loc[i, 'netzbezug'] = netzbezug
+        df.loc[i, 'PV to WP'] = pv_to_wp
         df.loc[i, 'battery_soc'] = battery_soc
-
     return df
 
+def ersparnis_bs(df, anlage_groesse, strompreis):
+    # Jahresertrag
+    pv = round(sum(df['PV Ertrag']))
+    netzbezug = round(sum(df['netzbezug']))
+    einspeisung = round(sum(df['überschuss']))
+    strombedarf = round(sum(df['Strombedarf']))
+    wp_strom = round(sum(df['elekt. Leistungaufnahme']))
+
+    # Eingenverbrauch der PV-Produktion
+    eigenverbrauch = round(sum(df['eigenverbrauch']))
+
+    # Summe der aufgeladener Energie im Batteriespeicher & WP
+    batterie = round(sum(df['battery_charge']))
+    wp = round(sum(df['PV to WP']))
+
+    # Direkter Verbrauch an PV-Strom
+    pv_direkt = eigenverbrauch - batterie
+
+    # Stromkosten mit PV
+    # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
+    # strompreis = 0.4135
+    stromkosten = round(netzbezug * strompreis, 2)
+
+    # Stromkosten ohne PV
+    verbrauch = round(sum(df['Strombedarf']+df['elekt. Leistungaufnahme']), 2)
+    stromkosten_ohne_pv = round(verbrauch * strompreis, 2)
+
+    # Einspeisevergütung - Gewinn
+    # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
+    if anlage_groesse <= 10:
+        einspeiseverguetung = 0.0796
+    else:
+        einspeiseverguetung = 0.0689    
+    verguetung = round(einspeisung * einspeiseverguetung, 2)
+
+    # Ersparnis
+    einsparung = round(stromkosten_ohne_pv - (stromkosten - verguetung), 2)
+    
+    ergebnisse = {
+        'strombedarf': strombedarf,
+        'wp': wp_strom,
+        'pv': pv,
+        'eigenverbrauch': eigenverbrauch,
+        'batterie': batterie,
+        'PV to WP': wp,
+        'pv_direkt': pv_direkt,
+        'netzbezug': netzbezug,
+        'einspeisung': einspeisung,
+        'stromkosten_ohne_pv': stromkosten_ohne_pv,
+        'stromkosten': stromkosten,
+        'verguetung': verguetung,
+        'einsparung': einsparung
+    }
+    return ergebnisse
+
+def print_ersparnis(ergebnisse):
+    # Print
+    print('Haushaltsstrombedarf in kWh: ', ergebnisse.get('strombedarf'))
+    print('Wärmepumpe Strombedarf in kWh: ', ergebnisse.get('wp'))
+    print('Jahresertrag in kWh: ', ergebnisse.get('pv'))
+    print('Eigenverbrauch in kWh: ', ergebnisse.get('eigenverbrauch'))
+    print('Geladene PV-Strom in Batteriespeicher in kWh: ', ergebnisse.get('batterie'))
+    print('Geladene PV-Strom in Wärmepumpe in kWh: ', ergebnisse.get('PV to WP'))
+    print('Direkter Verbrauch PV-Strom in kWh: ', ergebnisse.get('pv_direkt'))
+    print('')
+    print('Netzbezug in kWh: ', ergebnisse.get('netzbezug'))
+    print('Einspeisung ins Netz in kWh: ', ergebnisse.get('einspeisung'))
+    print('')
+    print('Stromkosten ohne PV in €/a: ', ergebnisse.get('stromkosten_ohne_pv'))
+    print('Stromkosten mit PV & BS in €/a: ', ergebnisse.get('stromkosten'))
+    print('Einspeisevergütung in €/a: ', ergebnisse.get('verguetung'))
+    print('Stromkosten Einsparung in €/a: ', ergebnisse.get('einsparung'))
 

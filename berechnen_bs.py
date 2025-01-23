@@ -3,7 +3,7 @@ import pandas as pd
 # def get_batteriespeicher():
 #     return
 
-def mit_pv(df, pv, battery_capacity):
+def mit_pv(df, pv, anlage_groesse, battery_capacity):
     # Remove timezone information from `pv`
     pv.index = pv.index.tz_localize(None)
 
@@ -18,55 +18,58 @@ def mit_pv(df, pv, battery_capacity):
     
     # Battery parameters
     c_rate = 1
-    charge_efficiency = 0.96 # BYD HVS & HVM
+    charge_efficiency = 0.96  # BYD HVS & HVM
     discharge_efficiency = 0.96
-    charging_power = c_rate * battery_capacity * charge_efficiency # kW
     min_soc = 1
     max_soc = battery_capacity
     battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
+
+    if anlage_groesse<battery_capacity:
+        battery_capacity = anlage_groesse
+    
+    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
 
     # Adding columns to the DataFrame for the simulation results
     df['battery_soc'] = 0.0
     df['battery_charge'] = 0.0
     df['battery_discharge'] = 0.0
     df['grid_export'] = 0.0
-    df['pv_excess'] = 0.0
+    df['überschuss'] = 0.0
     df['grid_import'] = 0.0
     df['eigenverbrauch'] = 0.0
 
     # Simulation loop
     for i, row in df.iterrows():
-        pv_production = row['PV Ertrag']
-        ac_consumption = row['Strombedarf']
+        pv_ertrag = row['PV Ertrag']
+        strombedarf = row['Strombedarf']
 
-        if pv_production >= ac_consumption:
+        if pv_ertrag >= strombedarf:
             # Surplus PV production
-            surplus = pv_production - ac_consumption
+            ueberschuss = pv_ertrag - strombedarf
 
             # Charge the battery with the surplus, limited by the charging power and max_soc
-            charge_potential = surplus * charge_efficiency
+            charge_potential = ueberschuss * charge_efficiency
             charge_to_battery = min(charge_potential, max_soc - battery_soc)
 
             # Update battery state of charge
-            battery_soc += charge_to_battery
+            battery_soc += charge_to_battery 
 
             # Calculate excess PV after charging battery
-            pv_excess = surplus - (charge_to_battery / charge_efficiency)
+            ueberschuss = ueberschuss - (charge_to_battery / charge_efficiency)
 
             # Energy to be exported to the grid
-            grid_export = pv_excess
+            grid_export = ueberschuss
 
             # Update DataFrame
             df.loc[i, 'battery_charge'] = charge_to_battery
-            df.loc[i, 'grid_export'] = grid_export
-            df.loc[i, 'pv_excess'] = pv_excess
+            df.loc[i, 'grid_export'] = grid_export if grid_export > 0 else 0.0
+            df.loc[i, 'überschuss'] = ueberschuss if ueberschuss > 0 else 0.0
             df.loc[i, 'grid_import'] = 0.0  # No grid import in surplus case
-            df.loc[i, 'eigenverbrauch'] = ac_consumption
+            df.loc[i, 'eigenverbrauch'] = strombedarf
 
-        else:
+        elif strombedarf > 0:
             # PV production is less than AC consumption
-            shortfall = ac_consumption - pv_production
-
+            shortfall = strombedarf - pv_ertrag
             # Discharge battery to meet the shortfall, limited by discharging power and min_soc
             discharge_needed = min(shortfall / discharge_efficiency, charging_power)
             discharge_from_battery = min(discharge_needed, battery_soc-min_soc)
@@ -88,11 +91,12 @@ def mit_pv(df, pv, battery_capacity):
             df.loc[i, 'battery_discharge'] = discharge_from_battery
             df.loc[i, 'grid_import'] = grid_import
             df.loc[i, 'grid_export'] = 0.0  # No grid export in deficit case
-            df.loc[i, 'pv_excess'] = 0.0  # No excess PV in deficit case
-            df.loc[i, 'eigenverbrauch'] = energy_from_battery + pv_production
+            df.loc[i, 'überschuss'] = 0.0  # No excess PV in deficit case
+            df.loc[i, 'eigenverbrauch'] = energy_from_battery + pv_ertrag
 
         # Update SOC in the DataFrame
         df.loc[i, 'battery_soc'] = battery_soc
+        
     # Optional: Set battery_soc to not exceed capacity or drop below 0
     # df['battery_soc'] = df['battery_soc'].clip(lower=min_soc, upper=max_soc)
     return df
