@@ -52,6 +52,7 @@ def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
 
     return V_ps, PS_verlust, Q_ps
 
+
 def ohne_pv(df, Q_ps, PS_verlust):
     ## WP und PS Zusammenfügen
     df['Wärmegehalt PS'] = np.nan
@@ -222,6 +223,7 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
     df['netzbezug'] = 0.0
     df['eigenverbrauch'] = 0.0
     df['PV to WP'] = 0.0
+    df['BS to WP'] = 0.0
 
     # Battery parameters
     c_rate = 1
@@ -234,8 +236,6 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
     if anlage_groesse<battery_capacity:
         battery_capacity = anlage_groesse
     
-    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
-
     # Simulation loop
     for i, row in df.iterrows():
         strombedarf = row['Strombedarf']  # Strombedarf at current time
@@ -256,15 +256,19 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
         else:
             ueberschuss = 0
             eigenverbrauch = pv_ertrag
-
-        # Step 2: Überschuss 2 WP (Prio 2)
-        if ueberschuss >= p_el_wp:
-            ueberschuss -= p_el_wp
-            eigenverbrauch += p_el_wp 
-            pv_to_wp = eigenverbrauch if p_el_wp > 0 else 0.0
+        
+        # Step 2: Überschuss für WP (Prio 2)
+        if ueberschuss > 0 and p_el_wp > 0:
+            if ueberschuss >= p_el_wp:
+                pv_to_wp = p_el_wp
+                ueberschuss -= p_el_wp
+                eigenverbrauch += pv_to_wp
+            else:
+                pv_to_wp = ueberschuss
+                ueberschuss = 0
+                eigenverbrauch += pv_to_wp
         else:
-            pv_to_wp = ueberschuss 
-            ueberschuss = 0
+            pv_to_wp = 0
 
         # Step 3: Überschuss 2 BS (Prio 3)
         if ueberschuss > 0:
@@ -276,7 +280,9 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
         else:
             charge_to_battery = 0
 
-        # Step 5: Strom von Netz?
+        charging_power = c_rate * battery_soc * charge_efficiency  # kW
+
+        # Step 4: Strom von Netz?
         energiemangel = strombedarf + p_el_wp - pv_ertrag
         if energiemangel > 0:
             # Entlade Batterie, um Energiemangel zu decken
@@ -296,6 +302,7 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
             discharge_from_battery = 0
             netzbezug = 0
         
+        ueberschuss = max(0, ueberschuss)
         if ueberschuss > 0 and netzbezug > 0:
             if netzbezug >= ueberschuss:
                 netzbezug -= ueberschuss
@@ -439,7 +446,7 @@ def mit_pvev(df, pv, homeoffice):
         df.at[i, 'netzbezug'] = netzbezug
     return df
 
-def mit_pvbsev(df, pv, anlage_groesse, battery_capacity):
+def mit_pvbsev(df, pv, anlage_groesse, battery_capacity, homeoffice):
     # Passe Index in PV and Index in df an
     pv.index = pv.index.tz_localize(None)
     df.index = pd.to_datetime(df.index)
@@ -466,19 +473,21 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity):
     # Start EV SOC
     ev_soc = max_batterie_niveau
 
-    # Initialize columns for battery and WP calculations
-    df['battery_soc'] = 0.0
+    # Neue Spalten für BS, EV und WP
+    df['PV to WP'] = 0.0
+    df['BS to WP'] = 0.0
+    df['EV Ladung'] = 0.0
+    df['EV SOC'] = 0.0 
+    df['PV to EV'] = 0.0
+    df['BS to EV'] = 0.0
     df['battery_charge'] = 0.0
     df['battery_discharge'] = 0.0
+    df['battery_soc'] = 0.0
     df['überschuss'] = 0.0
     df['netzbezug'] = 0.0
     df['eigenverbrauch'] = 0.0
-    df['PV to WP'] = 0.0
-    df['PV to EV'] = 0.0
-    df['EV Ladung'] = 0.0
-    df['EV SOC'] = 0.0 
-
-    # Battery parameters
+    
+    # BS Spezifikationen
     c_rate = 1
     charge_efficiency = 0.96  # BYD HVS & HVM
     discharge_efficiency = 0.96
@@ -488,8 +497,6 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity):
 
     if anlage_groesse<battery_capacity:
         battery_capacity = anlage_groesse
-    
-    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
 
     for i, row in df.iterrows():
         pv_ertrag = row['PV Ertrag']
@@ -502,33 +509,53 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity):
         pv_to_wp =  0
         netzbezug = 0
         ueberschuss = 0
-        eigenverbrauch = 0
+        eigenverbrauch_str = 0
+        eigenverbrauch_wp = 0
+        eigenverbrauch_bs = 0
+        eigenverbrauch_ev = 0
+        charge_to_battery = 0
+        discharge_from_battery = 0
+        bs_to_wp = 0
+        bs_to_ev = 0
+        bs_to_str = 0
 
-        # Step 1: Überschuss nach Strombedarf
+        # Step 1: Überschuss nach Strombedarf (Prio 1)
         if pv_ertrag >= strombedarf:
             ueberschuss = pv_ertrag - strombedarf
-            eigenverbrauch = strombedarf
+            eigenverbrauch_str = strombedarf
         else:
             ueberschuss = 0
-            eigenverbrauch = pv_ertrag
-            netzbezug = strombedarf - eigenverbrauch
+            eigenverbrauch_str = pv_ertrag
+            netzbezug = strombedarf - eigenverbrauch_str
 
-        # Step 2: Überschuss für WP (prio)
+        # Step 2: Überschuss für WP (Prio 2)
         if ueberschuss > 0 and p_el_wp > 0:
             if ueberschuss >= p_el_wp:
                 pv_to_wp = p_el_wp
                 ueberschuss -= p_el_wp
-                eigenverbrauch += pv_to_wp
+                eigenverbrauch_wp = pv_to_wp
             else:
                 pv_to_wp = ueberschuss
                 ueberschuss = 0
-                eigenverbrauch += pv_to_wp
+                eigenverbrauch_wp = pv_to_wp
                 netzbezug += p_el_wp - pv_to_wp
         else:
             pv_to_wp = 0
             netzbezug += p_el_wp
         
-        # Step 3: Berechne EV Ladezustand
+        # Step 3: Überschuss 2 BS (Prio 3)
+        if ueberschuss > 0:
+            charge_potential = ueberschuss * charge_efficiency
+            charge_to_battery = min(charge_potential, max_soc - battery_soc)
+            battery_soc += charge_to_battery
+            ueberschuss -= (charge_to_battery / charge_efficiency)
+            eigenverbrauch_bs = (charge_to_battery / charge_efficiency)
+        else:
+            charge_to_battery = 0
+        
+        charging_power = c_rate * battery_soc * charge_efficiency  # kW
+        
+        # Step 4: Berechne EV Ladezustand
         if ev_zuhause == 0 and ev_distanz > 0:
             ev_verbrauch = ev_distanz*ev_effizienz
             if ev_soc - ev_verbrauch >= min_batterie_niveau:
@@ -537,27 +564,74 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity):
                 ev_distanz = (ev_soc - min_batterie_niveau)/ev_effizienz
                 ev_soc = min_batterie_niveau
         
-        # Step 4: Lade EV wenn Zuhause
+        # Step 5: Lade EV wenn Zuhause (Prio 4)
         if ev_zuhause == 1 and ev_soc < max_batterie_niveau:
             ladeleistung = min(max_ladeleistung, max_batterie_niveau - ev_soc)
             if ueberschuss >= ladeleistung:
                 # Überschuss reicht aus, um die gewünschte Ladeleistung abzudecken
                 ev_soc += ladeleistung
                 pv_to_ev = ladeleistung
-                eigenverbrauch += pv_to_ev
+                eigenverbrauch_ev = pv_to_ev
                 ueberschuss -= ladeleistung
             elif ueberschuss > 0:
                 # Teilweise Laden mit Überschuss, Rest aus dem Netz
                 pv_to_ev = ueberschuss
                 netzbezug += ladeleistung - ueberschuss
                 ev_soc += ladeleistung
-                eigenverbrauch += pv_to_ev
+                eigenverbrauch_ev = pv_to_ev
                 ueberschuss = 0
             else:
             # Kein Überschuss, Laden komplett aus dem Netz
                 ev_soc += ladeleistung
                 netzbezug += ladeleistung
         
+        # Step 6: BS entladen oder von Netz beziehen
+        if netzbezug > 0:
+            # Entlade Batterie, um Energiemangel zu decken
+            discharge_needed = min(netzbezug / discharge_efficiency, charging_power)
+            discharge_from_battery = min(discharge_needed, battery_soc - min_soc)
+            energy_from_battery = discharge_from_battery * discharge_efficiency
+            battery_soc -= discharge_from_battery
+            # Übrige Energiemangel nach Batterienetladung = Netzbezug
+            remaining_shortfall = netzbezug - energy_from_battery
+            netzbezug = max(remaining_shortfall, 0) 
+
+            # Zuweisung von BS Entladung basierend auf Priorität
+            netzbezug_wp = max(0, p_el_wp - pv_to_wp)
+            netzbezug_ev = max(0, ladeleistung - pv_to_ev)
+            netzbezug_str = max(0, strombedarf-pv_ertrag)
+            # Verfügbarer Strom aus der Batterie
+            remaining_battery = energy_from_battery
+            # 1. Prio: Netzbezug für Strombedarf
+            if remaining_battery >= netzbezug_str:
+                bs_to_str = netzbezug_str
+                remaining_battery -= netzbezug_str
+            else:
+                bs_to_str = remaining_battery
+                remaining_battery = 0
+            # 2. Prio: Netzbezug für WP
+            if remaining_battery > 0:
+                if remaining_battery >= netzbezug_wp:
+                    bs_to_wp = netzbezug_wp
+                    remaining_battery -= netzbezug_wp
+                else:
+                    bs_to_wp = remaining_battery
+                    remaining_battery = 0
+            # 3. Prio: Netzbezug für EV
+            if remaining_battery > 0:
+                if remaining_battery >= netzbezug_ev:
+                    bs_to_ev = netzbezug_ev
+                    remaining_battery -= netzbezug_ev
+                else:
+                    bs_to_ev = remaining_battery
+                    remaining_battery = 0
+        else:
+            discharge_from_battery = 0
+            netzbezug = 0
+        
+        ueberschuss = max(0, ueberschuss)
+        eigenverbrauch = eigenverbrauch_str+eigenverbrauch_wp+eigenverbrauch_bs+eigenverbrauch_ev
+        # Step 7: Überprüfe Überschuss und Netzbezug
         if ueberschuss > 0 and netzbezug > 0:
             if netzbezug >= ueberschuss:
                 netzbezug -= ueberschuss
@@ -576,6 +650,12 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity):
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.at[i, 'eigenverbrauch'] = float(eigenverbrauch)
         df.at[i, 'netzbezug'] = netzbezug
+        df.loc[i, 'battery_charge'] = charge_to_battery
+        df.loc[i, 'battery_discharge'] = discharge_from_battery
+        df.loc[i, 'BS to WP'] = bs_to_wp
+        df.loc[i, 'BS to EV'] = bs_to_ev
+        df.loc[i, 'BS to Haushalt'] = bs_to_str
+        df.loc[i, 'battery_soc'] = battery_soc
     return df
     
 
@@ -681,6 +761,118 @@ def ersparnis_bs(df, anlage_groesse, strompreis):
     }
     return ergebnisse
 
+def ersparnis_ev(df, anlage_groesse, strompreis):
+    # Jahresertrag
+    pv = round(sum(df['PV Ertrag']))
+    netzbezug = round(sum(df['netzbezug']))
+    einspeisung = round(sum(df['überschuss']))
+    strombedarf = round(sum(df['Strombedarf']))
+    wp_strom = round(sum(df['elekt. Leistungaufnahme']))
+    ev_strom = round(sum(df['EV Ladung']))
+
+    # Eingenverbrauch der PV-Produktion
+    eigenverbrauch = round(sum(df['eigenverbrauch']))
+
+    # Summe der aufgeladener Energie
+    wp = round(sum(df['PV to WP']))
+    ev = round(sum(df['PV to EV']))
+
+    # Stromkosten mit PV
+    # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
+    # strompreis = 0.4135
+    stromkosten_ev = round(netzbezug * strompreis, 2)
+
+    # Stromkosten ohne PV
+    verbrauch = round(sum(df['Strombedarf']+df['elekt. Leistungaufnahme']+df['EV Ladung']), 2)
+    stromkosten_ohne_pv = round(verbrauch * strompreis, 2)
+
+    # Einspeisevergütung - Gewinn
+    # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
+    if anlage_groesse <= 10:
+        einspeiseverguetung = 0.0796
+    else:
+        einspeiseverguetung = 0.0689    
+    verguetung = round(einspeisung * einspeiseverguetung, 2)
+
+    # Ersparnis
+    einsparung = round(stromkosten_ohne_pv - (stromkosten_ev - verguetung), 2)
+    
+    ergebnisse = {
+        'strombedarf': strombedarf,
+        'wp': wp_strom,
+        'ev': ev_strom,
+        'pv': pv,
+        'eigenverbrauch': eigenverbrauch,
+        'PV to WP': wp,
+        'PV to EV': ev,
+        'netzbezug': netzbezug,
+        'einspeisung': einspeisung,
+        'stromkosten_ohne_pv': stromkosten_ohne_pv,
+        'stromkosten_bsev': stromkosten_ev,
+        'verguetung': verguetung,
+        'einsparung': einsparung
+    }
+    return ergebnisse
+
+def ersparnis_evbs(df, anlage_groesse, strompreis):
+    # Jahresertrag
+    pv = round(sum(df['PV Ertrag']))
+    netzbezug = round(sum(df['netzbezug']))
+    einspeisung = round(sum(df['überschuss']))
+    strombedarf = round(sum(df['Strombedarf']))
+    wp_strom = round(sum(df['elekt. Leistungaufnahme']))
+    ev_strom = round(sum(df['EV Ladung']))
+
+    # Eingenverbrauch der PV-Produktion
+    eigenverbrauch = round(sum(df['eigenverbrauch']))
+
+    # Summe der aufgeladener Energie im Batteriespeicher & WP
+    batterie = round(sum(df['battery_charge']))
+    bs_to_wp = round(sum(df['BS to WP']))
+    bs_to_ev = round(sum(df['BS to EV']))
+    wp = round(sum(df['PV to WP']))
+    ev = round(sum(df['PV to EV']))
+
+    # Stromkosten mit PV
+    # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
+    # strompreis = 0.4135
+    stromkosten_bsev = round(netzbezug * strompreis, 2)
+
+    # Stromkosten ohne PV
+    verbrauch = round(sum(df['Strombedarf']+df['elekt. Leistungaufnahme']+df['EV Ladung']), 2)
+    stromkosten_ohne_pv = round(verbrauch * strompreis, 2)
+
+    # Einspeisevergütung - Gewinn
+    # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
+    if anlage_groesse <= 10:
+        einspeiseverguetung = 0.0796
+    else:
+        einspeiseverguetung = 0.0689    
+    verguetung = round(einspeisung * einspeiseverguetung, 2)
+
+    # Ersparnis
+    einsparung = round(stromkosten_ohne_pv - (stromkosten_bsev - verguetung), 2)
+    
+    ergebnisse = {
+        'strombedarf': strombedarf,
+        'wp': wp_strom,
+        'ev': ev_strom,
+        'pv': pv,
+        'eigenverbrauch': eigenverbrauch,
+        'batterie': batterie,
+        'PV to WP': wp,
+        'PV to EV': ev,
+        'BS to WP': bs_to_wp,
+        'BS to EV': bs_to_ev, 
+        'netzbezug': netzbezug,
+        'einspeisung': einspeisung,
+        'stromkosten_ohne_pv': stromkosten_ohne_pv,
+        'stromkosten_bsev': stromkosten_bsev,
+        'verguetung': verguetung,
+        'einsparung': einsparung
+    }
+    return ergebnisse
+
 def print_ersparnis(ergebnisse):
     def print_if_available(label, key):
         if key in ergebnisse and ergebnisse[key] is not None:
@@ -703,7 +895,8 @@ def print_ersparnis(ergebnisse):
     print_if_available('Stromkosten ohne PV in €/a', 'stromkosten_ohne_pv')
     print_if_available('Stromkosten mit PV in €/a', 'stromkosten')
     print_if_available('Stromkosten mit PV & BS in €/a', 'stromkosten_bs')
-    print_if_available('Stromkosten mit PV, BS & EV in €/a', 'stromkosten_ev')
+    print_if_available('Stromkosten mit PV & EV in €/a', 'stromkosten_ev')
+    print_if_available('Stromkosten mit PV, BS & EV in €/a', 'stromkosten_bsev')
     print_if_available('Einspeisevergütung in €/a', 'verguetung')
     print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
     
