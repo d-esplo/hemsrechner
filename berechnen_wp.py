@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 def get_waermepumpe(heizlast):
     if heizlast <= 7:
@@ -899,5 +900,79 @@ def print_ersparnis(ergebnisse):
     print_if_available('Stromkosten mit PV, BS & EV in €/a', 'stromkosten_bsev')
     print_if_available('Einspeisevergütung in €/a', 'verguetung')
     print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
+
+def print_ersparnis_st(ergebnisse):
+    def print_if_available(label, key):
+        if key in ergebnisse and ergebnisse[key] is not None:
+            st.write(f"- {label}:   {ergebnisse[key]}")
+    
+    st.subheader(":blue[Ergebnisse]", divider=True)
+    row1 = st.columns(3)  # Erste Zeile: 3 Spalten
+    row2 = st.columns(3)  # Zweite Zeile: 3 Spalten
+
+    with row1[0]:
+        with st.container(border=True):
+            st.write('##### Strombedarf [kWh]')
+            print_if_available('Haushalt', 'strombedarf')
+            print_if_available('Wärmepumpe', 'wp')
+            print_if_available('EV', 'ev')
+    
+    with row1[1]:
+        with st.container(border=True):
+            st.write("##### PV [kWh]")
+            print_if_available('Jahresertrag', 'pv')
+            print_if_available('Eigenverbrauch', 'eigenverbrauch')
+            print_if_available('PV to WP', 'PV to WP')
+            print_if_available('PV to BS', 'batterie')
+            print_if_available('PV to EV', 'PV to EV')
+
+    with row1[2]:
+        with st.container(border=True):
+            st.write("##### BS [kWh]")
+            print_if_available('BS to WP', 'BS to WP')
+            print_if_available('BS to EV', 'BS to EV')
+    
+    with row2[0]:
+        with st.container(border=True):
+            st.write("##### Netz [kWh]")
+            print_if_available('Bezug', 'netzbezug')
+            print_if_available('Einspeisung', 'einspeisung')
+    
+    with row2[1]:
+        with st.container(border=True):
+            st.write("##### Stromkosten [€/a]")
+            print_if_available('ohne PV', 'stromkosten_ohne_pv')
+            print_if_available('mit PV', 'stromkosten')
+            print_if_available('mit PV & BS', 'stromkosten_bs')
+            print_if_available('mit PV & EV', 'stromkosten_ev')
+            print_if_available('mit PV, BS & EV', 'stromkosten_bsev')
+
+    with row2[2]:
+        with st.container(border=True):
+            st.write("##### Einsparung [€/a]")
+            print_if_available('Einspeisevergütung', 'verguetung')
+            print_if_available('Eigesparte Stromkosten', 'einsparung')
+
+    # print_if_available('Haushaltsstrombedarf in kWh', 'strombedarf')
+    # print_if_available('Wärmepumpe Strombedarf in kWh', 'wp')
+    # print_if_available('EV Strombedarf in kWh', 'ev')
+    # print_if_available('Jahresertrag in kWh', 'pv')
+    # print_if_available('Eigenverbrauch in kWh', 'eigenverbrauch')
+    # print_if_available('Geladene PV-Strom in Wärmepumpe in kWh', 'PV to WP')
+    # print_if_available('Geladene PV-Strom in Batteriespeicher in kWh', 'batterie')
+    # print_if_available('Geladene PV-Strom in Elektroauto in kWh', 'PV to EV')
+    # print_if_available('Geladene BS-Strom in Elektroauto in kWh', 'BS to EV')
+    # print_if_available('Geladene BS-Strom in Wärmepumpe in kWh', 'BS to WP')
+    # ''
+    # print_if_available('Netzbezug in kWh', 'netzbezug')
+    # print_if_available('Einspeisung ins Netz in kWh', 'einspeisung')
+    # ''
+    # print_if_available('Stromkosten ohne PV in €/a', 'stromkosten_ohne_pv')
+    # print_if_available('Stromkosten mit PV in €/a', 'stromkosten')
+    # print_if_available('Stromkosten mit PV & BS in €/a', 'stromkosten_bs')
+    # print_if_available('Stromkosten mit PV & EV in €/a', 'stromkosten_ev')
+    # print_if_available('Stromkosten mit PV, BS & EV in €/a', 'stromkosten_bsev')
+    # print_if_available('Einspeisevergütung in €/a', 'verguetung')
+    # print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
     
 

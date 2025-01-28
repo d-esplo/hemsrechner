@@ -1,4 +1,5 @@
 import pandas as pd
+import streamlit as st
 
 ev_effizienz = 191 / 1000  # kWh per km
 batteriekapazitaet = 72  # kWh
@@ -372,6 +373,31 @@ def print_ersparnis(ergebnisse):
     print_if_available('Einspeisevergütung in €/a', 'verguetung')
     print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
 
+def print_ersparnis_st(ergebnisse):
+    # Helper-Funktion: nur vorhandene Schlüssel anzeigen
+    def print_if_available(label, key):
+        if key in ergebnisse and ergebnisse[key] is not None:
+            st.write(f"{label}: {ergebnisse[key]}")
+
+    # Print
+    print_if_available('Haushaltsstrombedarf in kWh', 'strombedarf')
+    print_if_available('EV Strombedarf in kWh', 'ev')
+    print_if_available('Jahresertrag in kWh', 'pv')
+    print_if_available('Eigenverbrauch in kWh', 'eigenverbrauch')
+    print_if_available('Geladene PV-Strom in Batteriespeicher in kWh', 'bs')
+    print_if_available('Geladene PV-Strom in Elektroauto in kWh', 'PV to EV')
+    print_if_available('Geladene BS-Strom in Elektroauto in kWh', 'BS to EV')
+    ''  
+    '' # Leere Zeile zur Trennung
+    print_if_available('Netzbezug in kWh', 'netzbezug')
+    print_if_available('Einspeisung ins Netz in kWh', 'einspeisung')
+    ''
+    '' # Leere Zeile zur Trennung
+    print_if_available('Stromkosten ohne PV in €/a', 'stromkosten_ohne_pv')
+    print_if_available('Stromkosten mit PV in €/a', 'stromkosten')
+    print_if_available('Stromkosten mit PV & BS in €/a', 'stromkosten_bs')
+    print_if_available('Einspeisevergütung in €/a', 'verguetung')
+    print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
 
 # def mit_hems(df):
 #      # Step 3: Lade EV wenn Zuhause

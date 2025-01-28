@@ -1,7 +1,5 @@
 import pandas as pd
-
-# def get_batteriespeicher():
-#     return
+import streamlit as st
 
 def mit_pv(df, pv, anlage_groesse, battery_capacity):
     # Remove timezone information from `pv`
@@ -26,8 +24,6 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
 
     if anlage_groesse<battery_capacity:
         battery_capacity = anlage_groesse
-    
-    charging_power = c_rate * battery_capacity * charge_efficiency  # kW
 
     # Adding columns to the DataFrame for the simulation results
     df['battery_soc'] = 0.0
@@ -68,6 +64,7 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
             df.loc[i, 'eigenverbrauch'] = strombedarf
 
         elif strombedarf > 0:
+            charging_power = c_rate * battery_soc * charge_efficiency
             # PV production is less than AC consumption
             shortfall = strombedarf - pv_ertrag
             # Discharge battery to meet the shortfall, limited by discharging power and min_soc
@@ -138,6 +135,7 @@ def ersparnis(df, anlage_groesse, strompreis):
     
     ergebnisse = {
     'pv': pv,
+    'stromverbrauch' : verbrauch,
     'eigenverbrauch': eigenverbrauch,
     'batterie': batterie,
     'pv_direkt': pv_direkt,
@@ -155,7 +153,6 @@ def print_ersparnis(ergebnisse):
     print('Jahresertrag in kWh: ', ergebnisse.get('pv'))
     print('Eigenverbrauch in kWh: ', ergebnisse.get('eigenverbrauch'))
     print('Geladene PV-Strom in Batteriespeicher in kWh: ', ergebnisse.get('batterie'))
-    print('Direkter Verbrauch PV-Strom in kWh: ', ergebnisse.get('pv_direkt'))
     print('')
     print('Netzbezug in kWh: ', ergebnisse.get('netzbezug'))
     print('Einspeisung ins Netz in kWh: ', ergebnisse.get('einspeisung'))
@@ -164,4 +161,70 @@ def print_ersparnis(ergebnisse):
     print('Stromkosten mit PV & BS in €/a: ', ergebnisse.get('stromkosten'))
     print('Einspeisevergütung in €/a: ', ergebnisse.get('verguetung'))
     print('Stromkosten Einsparung in €/a: ', ergebnisse.get('einsparung'))
+
+def print_ersparnis_st(ergebnisse):
+    st.subheader("Ergebnisse", divider=True)
+    row1 = st.columns(3)  # Erste Zeile: 3 Spalten
+    row2 = st.columns(3)  # Zweite Zeile: 3 Spalten
+    # Inhalte der ersten Zeile
+    with row1[0]:
+        with st.container(border=True):
+            st.write("Jahresertrag PV in kWh")
+            st.write(ergebnisse.get('pv'))
+
+    with row1[1]:
+        with st.container(border=True):
+            st.write("Eigenverbrauch in kWh")
+            st.write(ergebnisse.get('eigenverbrauch'))
+
+    with row1[2]:
+        with st.container(border=True):
+            st.write("Geladene PV-Strom in Batteriespeicher")
+            st.write(ergebnisse.get('batterie'))
+
+    # Inhalte der zweiten Zeile
+    with row2[0]:
+        with st.container(border=True):
+            st.write("Strombedarf")
+            st.write(ergebnisse.get('stromverbrauch'))
+
+    with row2[1]:
+        with st.container(border=True):
+            st.write("Netzbezug in kWh")
+            st.write(ergebnisse.get('netzbezug'))
+
+    with row2[2]:
+        with st.container(border=True):
+            st.write("Einspeisung ins Netz in kWh")
+            st.write(ergebnisse.get('einspeisung'))
+
+    # Neue Container für Stromkosten
+    st.subheader("Stromkosten")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("Stromkosten ohne PV in €/a: ", ergebnisse.get('stromkosten_ohne_pv'))
+        st.write("Stromkosten mit PV & BS in €/a: ", ergebnisse.get('stromkosten'))
+
+    with col2:
+        st.write("Einspeisevergütung in €/a: ", ergebnisse.get('verguetung'))
+        st.write("Stromkosten Einsparung in €/a: ", ergebnisse.get('einsparung'))
+
+
+    # for col in row1 + row2:
+    #     tile = col.container(height=120)
+    #     tile.title("Jahresertrag PV in kWh")
+    #     tile.write(ergebnisse.get('pv'))
+
+    #     st.write('Eigenverbrauch in kWh: ', ergebnisse.get('eigenverbrauch'))
+
+    #     st.write('Geladene PV-Strom in Batteriespeicher in kWh: ', ergebnisse.get('batterie'))
+    #     ''
+    #     st.write('Netzbezug in kWh: ', ergebnisse.get('netzbezug'))
+    #     st.write('Einspeisung ins Netz in kWh: ', ergebnisse.get('einspeisung'))
+    #     'Stromkosten:'
+    #     st.write('Stromkosten ohne PV in €/a: ', ergebnisse.get('stromkosten_ohne_pv'))
+    #     st.write('Stromkosten mit PV & BS in €/a: ', ergebnisse.get('stromkosten'))
+    #     st.write('Einspeisevergütung in €/a: ', ergebnisse.get('verguetung'))
+    #     st.write('Stromkosten Einsparung in €/a: ', ergebnisse.get('einsparung'))
 
