@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import streamlit as st
+import heizkurve
 
 def get_waermepumpe(heizlast):
     if heizlast <= 7:
@@ -53,7 +54,7 @@ def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
 
     return V_ps, PS_verlust, Q_ps
 
-
+# Berechnen - immer vorher df aus def ohne_pv erstellen 
 def ohne_pv(df, Q_ps, PS_verlust):
     ## WP und PS Zusammenfügen
     df['Wärmegehalt PS'] = np.nan
@@ -140,6 +141,7 @@ def ohne_pv(df, Q_ps, PS_verlust):
     return df, P_el, COP
 
 def mit_pv(df, pv):
+    # Benutzen den df aus def ohne_pv, also immer muss vorher der laufen
     # Normalize timezones: remove the timezone for both indices
     pv.index = pv.index.tz_localize(None)
     df.index = df.index.tz_localize(None)
@@ -659,7 +661,7 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity, homeoffice):
         df.loc[i, 'battery_soc'] = battery_soc
     return df
     
-
+# Ersparnis 
 def ersparnis_pv(df, anlage_groesse, strompreis):
     # Jahresertrag
     pv = round(sum(df['PV Ertrag']))
@@ -874,6 +876,7 @@ def ersparnis_evbs(df, anlage_groesse, strompreis):
     }
     return ergebnisse
 
+# Print
 def print_ersparnis(ergebnisse):
     def print_if_available(label, key):
         if key in ergebnisse and ergebnisse[key] is not None:
@@ -952,27 +955,194 @@ def print_ersparnis_st(ergebnisse):
             st.write("##### Einsparung [€/a]")
             print_if_available('Einspeisevergütung', 'verguetung')
             print_if_available('Eigesparte Stromkosten', 'einsparung')
-
-    # print_if_available('Haushaltsstrombedarf in kWh', 'strombedarf')
-    # print_if_available('Wärmepumpe Strombedarf in kWh', 'wp')
-    # print_if_available('EV Strombedarf in kWh', 'ev')
-    # print_if_available('Jahresertrag in kWh', 'pv')
-    # print_if_available('Eigenverbrauch in kWh', 'eigenverbrauch')
-    # print_if_available('Geladene PV-Strom in Wärmepumpe in kWh', 'PV to WP')
-    # print_if_available('Geladene PV-Strom in Batteriespeicher in kWh', 'batterie')
-    # print_if_available('Geladene PV-Strom in Elektroauto in kWh', 'PV to EV')
-    # print_if_available('Geladene BS-Strom in Elektroauto in kWh', 'BS to EV')
-    # print_if_available('Geladene BS-Strom in Wärmepumpe in kWh', 'BS to WP')
-    # ''
-    # print_if_available('Netzbezug in kWh', 'netzbezug')
-    # print_if_available('Einspeisung ins Netz in kWh', 'einspeisung')
-    # ''
-    # print_if_available('Stromkosten ohne PV in €/a', 'stromkosten_ohne_pv')
-    # print_if_available('Stromkosten mit PV in €/a', 'stromkosten')
-    # print_if_available('Stromkosten mit PV & BS in €/a', 'stromkosten_bs')
-    # print_if_available('Stromkosten mit PV & EV in €/a', 'stromkosten_ev')
-    # print_if_available('Stromkosten mit PV, BS & EV in €/a', 'stromkosten_bsev')
-    # print_if_available('Einspeisevergütung in €/a', 'verguetung')
-    # print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
     
+# Berechnen mit HEMS
+# Basis Programm
+def wp_hems(df, pv, Q_ps, PS_verlust, heizlast):
+    
+    wp_groesse = get_waermepumpe(heizlast)
+    df = heizkurve.get_cop(wp_groesse, df.copy())
+    
+    # Passe Index in PV and Index in df an
+    pv.index = pv.index.tz_localize(None)
+    df.index = pd.to_datetime(df.index)
+    pv_aligned = pv.reindex(df.index).fillna(0)
+    df['PV Ertrag'] = pv_aligned.values.astype(float)
 
+    ## WP und PS Zusammenfügen
+    df['Wärmegehalt PS'] = np.nan
+    df['Ladezustand PS'] = np.nan
+    df['Heizleistung neu'] = np.nan
+    df['temp_mittel'] = df['T_aussen'].rolling(window=48, min_periods=1).mean()
+    df['PV to WP'] = 0.0 # Elektrische Leistung für WP aus PV
+    df['überschuss'] = 0.0
+    df['eigenverbrauch'] = 0.0 
+    df['netzbezug'] = 0.0
+    # df['Wärmebedarf_mittel'] = df['Heizwärmebedarf'].rolling(window=48, min_periods=1).mean()
+
+    # Set 1. Reihe 
+    df.iloc[0, df.columns.get_loc('Wärmegehalt PS')] = Q_ps  
+    df.iloc[0, df.columns.get_loc('Ladezustand PS')] = 1 
+    df.iloc[0, df.columns.get_loc('Heizleistung neu')] = df.iloc[0, df.columns.get_loc('Heizleistung')]
+
+    for time in df.index[1:]:  # ab der zweiten Zeile
+        previous_time = time - pd.Timedelta(hours=1)
+        temp_mittel = df.at[time, 'temp_mittel']
+        heizwaermebedarf = df.at[time, 'Heizwärmebedarf']
+        heizleistung = df.at[time, 'Heizleistung']
+        heizleistung_neu = df.at[time, 'Heizleistung neu']
+        waerme_ps = df.at[time, 'Wärmegehalt PS']
+        waerme_ps_p = df.at[previous_time, 'Wärmegehalt PS']
+        ladezustand_ps = df.at[time, 'Ladezustand PS']
+        cop_60 = df.at[time, 'COP 60']
+        cop_40 = df.at[time, 'COP 40']
+        strombedarf = df.at[time,'Strombedarf']
+        pv_ertrag = df.at[time,'PV Ertrag']
+        ueberschuss = 0
+        eigenverbrauch = 0
+       
+        if temp_mittel <= 15:
+            
+            # Step 1: Überschuss nach Strombedarf
+            if pv_ertrag >= strombedarf:
+                ueberschuss = pv_ertrag - strombedarf
+                eigenverbrauch = strombedarf
+            else:
+                ueberschuss = 0
+                eigenverbrauch = pv_ertrag
+
+            if ueberschuss > 0 and waerme_ps_p < Q_ps and :
+                heizleistung_neu = Q_ps - waerme_ps_p
+                cop_60
+
+
+            if heizwaermebedarf == 0:
+                heizleistung_neu = 0
+                waerme_ps = waerme_ps_p - PS_verlust
+            elif heizwaermebedarf > heizleistung:
+                heizleistung_neu = heizwaermebedarf
+                waerme_ps = waerme_ps_p - heizwaermebedarf - PS_verlust + heizleistung_neu
+            elif waerme_ps_p > heizwaermebedarf:
+                heizleistung_neu = 0
+                waerme_ps = waerme_ps_p - heizwaermebedarf - PS_verlust
+            elif waerme_ps_p < heizwaermebedarf:
+                if Q_ps - waerme_ps_p > heizleistung:
+                    heizleistung_neu = heizleistung + Q_ps - waerme_ps_p
+                    waerme_ps = waerme_ps_p + heizleistung_neu - heizwaermebedarf - PS_verlust
+                else:
+                    heizleistung_neu = heizleistung
+                    waerme_ps = waerme_ps_p + heizleistung_neu - heizwaermebedarf - PS_verlust
+        else:
+            # "T_mittel > 15° <- wird nicht geheizt
+            heizleistung_neu = 0
+            waerme_ps = waerme_ps_p - PS_verlust 
+
+        # Wärmegehalt darf nicht negativ sein
+        if waerme_ps <= 0:
+            waerme_ps = 0
+        
+        # Wärmegehalt darf nicht > Q_ps sein
+
+        # Berechnung des Ladezustands
+        ladezustand = waerme_ps / Q_ps
+        if ladezustand > 1:
+            # print("Ladezustand > 1, setze Ladezustand auf 1")
+            ladezustand_ps = 1
+        elif ladezustand <= 0:
+            # print(f"Ladezustand <= 0, setzte 0")
+            ladezustand_ps = 0
+        else:
+            ladezustand_ps = ladezustand
+
+     # Assign calculated values back to the DataFrame
+        df.at[time, 'Wärmegehalt PS'] = waerme_ps
+        df.at[time, 'Ladezustand PS'] = ladezustand_ps
+        df.at[time, 'Heizleistung neu'] = heizleistung_neu
+    
+    # Handle rows where Heizleistung neu == 0
+    df.loc[df['Heizleistung neu'] == 0, 'COP'] = 0
+    df['COP'] = df['COP'].replace(0, np.nan).astype(float)
+
+    # Calculate the mean COP for rows where Heizleistung neu > 0
+    cop_filtered = df[df['Heizleistung neu'] > 0]['COP']
+    COP = round(cop_filtered.mean(),2)
+
+    # Assign elekt. Leistungaufnahme using the full COP column
+    df['elekt. Leistungaufnahme'] = (df['Heizleistung neu'] / df['COP']).fillna(0).astype(float)
+
+    # Handle any potential division by zero
+    df['elekt. Leistungaufnahme'].fillna(0, inplace=True)
+
+    # Calculate therm. Entnahmelesitung
+    df['therm. Entnahmelesitung'] = df['Heizleistung'] - df['elekt. Leistungaufnahme']
+
+    P_el = round(df['elekt. Leistungaufnahme'].sum(), 2)
+    return df, P_el, COP
+
+
+def mit_hems(df, pv):
+    # Benutzen den df aus def ohne_pv, also immer muss vorher der laufen
+
+    # df ohne HEMS
+    df_ohne = mit_pv(df.copy(), pv)
+    
+    # pv zu df anpassen und hinzufügen
+    pv.index = pv.index.tz_localize(None)
+    df.index = df.index.tz_localize(None)
+    pv_aligned = pv.reindex(df.index)
+    df['PV Ertrag'] = pv_aligned.values.astype(float)
+
+    # Initialize columns for surplus and WP energy from PV
+    df['überschuss'] = 0.0
+    df['PV to WP'] = 0.0 # Elektrische Leistung für WP aus PV
+    df['eigenverbrauch'] = 0.0 
+    df['netzbezug'] = 0.0
+
+    # Iterate through rows
+    for i, row in df.iterrows():
+        strombedarf = row['Strombedarf']  # Strombedarf at current time
+        pv_ertrag = row['PV Ertrag']  # PV generation at current time
+        p_el_wp = row['elekt. Leistungaufnahme']  # Electrical power for WP
+        pv_to_wp =  0
+        ueberschuss = 0
+        eigenverbrauch = 0
+        netzbezug = 0
+
+        # Step 1: Überschuss nach Strombedarf
+        if pv_ertrag >= strombedarf:
+            ueberschuss = pv_ertrag - strombedarf
+            eigenverbrauch = strombedarf
+        else:
+            ueberschuss = 0
+            eigenverbrauch = pv_ertrag
+
+        # Step 2: Überschuss für WP (prio)
+        if ueberschuss > 0 and p_el_wp > 0:
+            if ueberschuss >= p_el_wp:
+                pv_to_wp = p_el_wp
+                ueberschuss -= p_el_wp
+                eigenverbrauch += pv_to_wp
+            else:
+                pv_to_wp = ueberschuss
+                ueberschuss = 0
+                eigenverbrauch += pv_to_wp
+        else:
+            pv_to_wp = 0
+
+        netzbezug = (strombedarf - eigenverbrauch) + (p_el_wp - pv_to_wp)
+        if ueberschuss > 0 and netzbezug > 0:
+            if netzbezug >= ueberschuss:
+                netzbezug -= ueberschuss
+                eigenverbrauch += ueberschuss
+                ueberschuss = 0
+            else:
+                ueberschuss -= netzbezug
+                eigenverbrauch += netzbezug
+                netzbezug = 0
+        
+        # Assign values to the DataFrame
+        df.at[i, 'überschuss'] = float(ueberschuss)
+        df.at[i, 'PV to WP'] = float(pv_to_wp)
+        df.at[i, 'eigenverbrauch'] = float(eigenverbrauch)
+        df.at[i, 'netzbezug'] = netzbezug
+    return df, df_ohne
