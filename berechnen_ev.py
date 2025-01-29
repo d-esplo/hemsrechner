@@ -696,7 +696,7 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
-    
+    co2 = round(((netzbezug_ohne-netzbezug)*0.380/1000), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
     ergebnisse = {
         'strombedarf': strombedarf,
         'ev': ev,
@@ -713,7 +713,8 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
         'stromkosten': stromkosten,
         'verguetung': verguetung,
         'verguetung ohne': verguetung_ohne,
-        'einsparung': einsparung
+        'einsparung': einsparung,
+        'co2': co2 
     }
     return ergebnisse
 
@@ -754,7 +755,7 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten_bs - verguetung), 2)
-    
+    co2 = (netzbezug_ohne-netzbezug*0.380) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
     ergebnisse = {
         'strombedarf': strombedarf,
         'ev': ev,
@@ -773,7 +774,8 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
         'stromkosten_bs': stromkosten_bs,
         'verguetung': verguetung,
         'verguetung ohne': verguetung_ohne,
-        'einsparung': einsparung
+        'einsparung': einsparung,
+        'co2': co2
     }
     return ergebnisse
 
@@ -814,7 +816,7 @@ def print_ersparnis_hems_st(ergebnisse):
     # Helper-Funktion: nur vorhandene Schlüssel anzeigen
     def print_if_available(label, key):
         if key in ergebnisse and ergebnisse[key] is not None:
-            st.write(f"-{label}: {ergebnisse[key]}")
+            st.write(f"- {label}: {ergebnisse[key]}")
     
     st.subheader(":blue[Ergebnisse]", divider=True)
     row1 = st.columns(3)  # Erste Zeile: 3 Spalten
@@ -822,7 +824,7 @@ def print_ersparnis_hems_st(ergebnisse):
 
     with row1[0]:
         with st.container(border=True):
-            st.write('##### Bedarf [kWh]')
+            st.write('##### Strombedarf [kWh]')
             print_if_available('Haushalt', 'strombedarf')
             print_if_available('EV', 'ev')
     
@@ -858,8 +860,9 @@ def print_ersparnis_hems_st(ergebnisse):
 
     with row2[2]:
             with st.container(border=True):
-                st.write("##### Einsparung mit HEMS [€/a]")
-                print_if_available('', 'einsparung')
+                st.write("##### Einsparung [€/a]")
+                print_if_available('mit HEMS [€/a]', 'einsparung')
+                print_if_available('mit HEMS [kg CO₂/a]', 'co2')
 
 
 

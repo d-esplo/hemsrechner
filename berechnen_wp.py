@@ -4,17 +4,21 @@ import streamlit as st
 import heizkurve
 
 def get_waermepumpe(heizlast):
-    if heizlast <= 7:
+    if heizlast <= 5:
         wp_groesse = 6
+        nenn_heizleistung = 5.3
         wp = 'Nibe F2040-6'
-    elif heizlast <= 9:
+    elif heizlast <= 7:
         wp_groesse = 8
+        nenn_heizleistung = 7
         wp = 'Nibe F2040-8'
-    elif heizlast <=13:
+    elif heizlast <= 10:
         wp_groesse = 12
+        nenn_heizleistung = 10
         wp = 'Nibe F2040-12'
     else:
         wp_groesse = 16
+        nenn_heizleistung = 14
         wp = 'Nibe F2040-16'
     return wp_groesse
 
@@ -61,12 +65,14 @@ def ohne_pv(df, Q_ps, PS_verlust):
     df['Ladezustand PS'] = np.nan
     df['Heizleistung neu'] = np.nan
     df['temp_mittel'] = df['T_aussen'].rolling(window=48, min_periods=1).mean()
-    df['Wärmebedarf_mittel'] = df['Heizwärmebedarf'].rolling(window=48, min_periods=1).mean()
+    # df['Wärmebedarf_mittel'] = df['Heizwärmebedarf'].rolling(window=48, min_periods=1).mean()
 
     # Set 1. Reihe 
     df.iloc[0, df.columns.get_loc('Wärmegehalt PS')] = Q_ps  
     df.iloc[0, df.columns.get_loc('Ladezustand PS')] = 1 
     df.iloc[0, df.columns.get_loc('Heizleistung neu')] = df.iloc[0, df.columns.get_loc('Heizleistung')]
+
+    max_heizleistung = df['Heizleistung'].max()
 
     for time in df.index[1:]:  # ab der zweiten Zeile
         previous_time = time - pd.Timedelta(hours=1)
@@ -76,7 +82,6 @@ def ohne_pv(df, Q_ps, PS_verlust):
         heizleistung_neu = df.at[time, 'Heizleistung neu']
         waerme_ps = df.at[time, 'Wärmegehalt PS']
         waerme_ps_p = df.at[previous_time, 'Wärmegehalt PS']
-        ladezustand_ps = df.at[time, 'Ladezustand PS']
        
         if temp_mittel <= 15: 
             if heizwaermebedarf == 0:
@@ -115,6 +120,7 @@ def ohne_pv(df, Q_ps, PS_verlust):
         else:
             ladezustand_ps = ladezustand
 
+            
      # Assign calculated values back to the DataFrame
         df.at[time, 'Wärmegehalt PS'] = waerme_ps
         df.at[time, 'Ladezustand PS'] = ladezustand_ps
@@ -1011,8 +1017,8 @@ def wp_hems(df, pv, Q_ps, PS_verlust, heizlast):
                 ueberschuss = 0
                 eigenverbrauch = pv_ertrag
 
-            if ueberschuss > 0 and waerme_ps_p < Q_ps and :
-                heizleistung_neu = Q_ps - waerme_ps_p
+            if ueberschuss > 0 and waerme_ps_p < Q_ps:
+                heizleistung_neu = heizleistung_max 
                 cop_60
 
 
