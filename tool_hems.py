@@ -1,5 +1,5 @@
 # In Terminal eingeben:
-# streamlit run tool_hems.py --server.port 5997
+# streamlit run tool_hems.py --server.port 5996
 
 import streamlit as st
 import pandas as pd
@@ -28,6 +28,7 @@ with col1:
 
 with col2:
    strombedarf = st.number_input("Strombedarf", value = None, placeholder ='in kWh')
+   strompreis = st.number_input('Strompreis', value=None, placeholder = 'in Cent')
    ':blue[Komponenten Auswahl: ]'
    anlage_groesse = st.number_input("PV Anlage",  value = None, placeholder = 'Größe in kWp')
    komponenten = ["Batteriespeicher", "EV"]#, "Wärmepumpe"]
@@ -49,6 +50,7 @@ TRY_region, T_n_aussen = try_region.get_try_t_n_aussen(int(plz))
 df = lastprofile_VDI4655.get_lastprofile(w, s, twe, flaeche, TRY_region, anzahl_personen)
 df['T_aussen'] = temperatur_aussen.get_hourly_temperature(plz, 2014)
 pv = pv_profil.get_pv_profil(plz, 2014, anlage_groesse)
+strompreis = strompreis/100
 
 # Für WP (+ PV, + BS, + LS)
 # if "Wärmepumpe" in selection:
@@ -119,6 +121,9 @@ else:
 # Monat - Summe pro Woche
 # Woche - Summe pro Tag
 # 1 Tag - pro Stunde
+''
+km = round(df_plt['ev distanz'].sum())
+f'gefahrene km: {km}'
 ''
 st.subheader("Plots", divider=True)
 

@@ -93,7 +93,7 @@ if "Wärmepumpe" in selection:
     # Für EV (+ PV, +BS)
 elif 'EV' in selection:
     if 'Batteriespeicher' in selection:
-        df_evbs = berechnen_ev.mit_pvbs(df.copy(), pv, anlage_groesse, battery_capacity, homeoffice)
+        df_evbs = berechnen_ev.mit_pvbs(df.copy(), pv, battery_capacity, homeoffice)
         ergebnisse = berechnen_ev.ersparnis_pvbs(df_evbs, anlage_groesse, strompreis)
         plot_data = ['PV Ertrag', 'Strombedarf', 'überschuss', 'netzbezug', 'battery_soc', 'EV Ladung']
         df_plt = df_evbs.copy()
