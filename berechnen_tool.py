@@ -30,12 +30,14 @@ with col2:
    strombedarf = st.number_input("Strombedarf", value = None, placeholder ='in kWh')
    ':blue[Komponenten Auswahl: ]'
    anlage_groesse = st.number_input("PV Anlage",  value = None, placeholder = 'Größe in kWp')
+   anlage_groesse = int(anlage_groesse)
    komponenten = ["Batteriespeicher", "EV", "Wärmepumpe"]
-   selection = st.pills("Komponenten", komponenten, selection_mode="multi")
+   selection = st.multiselect("Komponenten", komponenten)
 
 with col3:
     if "Batteriespeicher" in selection:
         battery_capacity = st.number_input("Batteriespeicher", value = None, placeholder = 'Kapazität in kWh')
+        battery_capacity = int(battery_capacity)
     
     if "EV" in selection:
         homeoffice = st.selectbox("Homeoffice", (True, False))

@@ -423,6 +423,7 @@ def mit_hems(df, pv, homeoffice):
     df['PV to EV'] = 0.0
     df['EV Ladung'] = 0.0
     df['EV SOC'] = 0.0
+    df['ev_state'] = 0.0
 
     for i, row in df.iterrows():
         pv_ertrag = row['PV Ertrag']
@@ -430,15 +431,18 @@ def mit_hems(df, pv, homeoffice):
         ev_zuhause = row['ev zuhause']
         ev_distanz = row['ev distanz']
         next_ev_distanz = row['next_day_ev_distanz']
-        uhrzeit = row.name.hour 
+        # uhrzeit = row.name.hour 
         tag = row.name.dayofweek
-        ladeleistung = 0
-        pv_to_ev = 0
-        netzbezug = 0
-        ueberschuss = 0
-        eigenverbrauch = 0
-        lade = 0
-        max_ev_laden = 0
+        ladeleistung = 0.0
+        pv_to_ev = 0.0
+        netzbezug = 0.0
+        ueberschuss = 0.0
+        eigenverbrauch = 0.0
+        lade = 0.0
+        max_ev_laden = 0.0
+        state = 0.0
+        next_ev_verbrauch = 0.0
+        next_ev_soc = 0.0
 
         # Step 1: Überschuss nach Strombedarf
         if pv_ertrag >= strombedarf:
@@ -452,85 +456,108 @@ def mit_hems(df, pv, homeoffice):
         # Step 2: EV
         # 2.1: Berechne EV Ladezustand
         if ev_zuhause == 0 and ev_distanz > 0:
-            ev_verbrauch = ev_distanz*ev_effizienz
-            ev_soc -= ev_verbrauch
-            # if ev_soc - ev_verbrauch >= min_batterie_niveau:
-            #     ev_soc -= ev_verbrauch
-            # else:
-            #    max_distanz = max(0, (ev_soc - min_batterie_niveau) / ev_effizienz)
-            #    ev_verbrauch = max_distanz * ev_effizienz
-            #    ev_soc -= ev_verbrauch
-            #    ev_distanz = max_distanz
+            ev_verbrauch = ev_distanz * ev_effizienz
+            ev_soc = ev_soc - ev_verbrauch
 
-        # 2.2: EV mit PV Laden, wenn zuhuase
-        if ev_zuhause == 1 and ev_soc < batteriekapazitaet and ueberschuss >= 1.4:
+        # 2.2: EV mit PV Laden, wenn zuhause
+        if ev_zuhause == 1 and ev_soc < batteriekapazitaet and ueberschuss >= 0.9:
             lade = min(ueberschuss, 11)
             max_ev_laden = batteriekapazitaet - ev_soc
-            if lade > max_ev_laden:
-                lade = max_ev_laden
-                pv_to_ev = lade
+            # Stelle sicher, dass mindestens 1.4 kWh geladen werden
+            if lade >= 1.4 and max_ev_laden >= 1.4:
+                lade = min(lade, max_ev_laden)
                 ev_soc += lade
                 ueberschuss -= lade
-            else: 
-                pv_to_ev = lade
-                ev_soc += lade
-                ueberschuss -= lade
-        
-        # 2.3: Berechne benötigte EV SOC für den nächsten Tag unter die Woche
-        if homeoffice == True:
-            if tag in [0, 2] and ev_soc < ev_verbrauch_arbeit:
-                next_ev_soc = ev_verbrauch_arbeit
+                pv_to_ev += lade
+                state += 1
+            elif 0.9 < ueberschuss < 1.4:
+                # Netz unterstutzt mit max. 500 W den Überschussladen
+                netzbezug += 1.4 - ueberschuss
+                ladeleistung = 1.4
+                lade = 0
+                ev_soc = min(ev_soc + ladeleistung, batteriekapazitaet)  # Begrenzung
+                pv_to_ev += ueberschuss
+                eigenverbrauch += pv_to_ev
+                ueberschuss = 0
+                state += 2
+            else:
+                lade = 0
+        else:
+            lade = 0
+
+        # 2.3: Berechne benötigte EV SOC für den nächsten Tag unter der Woche
+        if homeoffice:
+            if tag in [0, 2] and ev_soc <= ev_verbrauch_arbeit:
+                next_ev_soc = ev_verbrauch_arbeit + min_batterie_niveau
+                state += 0.1
             else:
                 next_ev_soc = 0
         else:
-            if tag in [0, 1, 2, 3, 6] and ev_soc < ev_verbrauch_arbeit:
-                next_ev_soc = ev_verbrauch_arbeit
+            if tag in [0, 1, 2, 3, 6] and ev_soc <= ev_verbrauch_arbeit:
+                next_ev_soc = ev_verbrauch_arbeit + min_batterie_niveau
+                state += 0.2
             else:
                 next_ev_soc = 0
             
         # 2.4 Berechne benötigte EV SOC für das Wochenende
-        next_ev_verbrauch = next_ev_distanz*ev_effizienz
+        next_ev_verbrauch = next_ev_distanz * ev_effizienz
         if tag in [4, 5] and next_ev_verbrauch > ev_soc:
-            next_ev_soc = next_ev_verbrauch
+            next_ev_soc = next_ev_verbrauch + min_batterie_niveau
+            state += 0.3
         else:
             next_ev_soc = 0
 
         # 2.5: EV Laden wenn notwendig für den nächsten Tag
         if ev_zuhause == 1 and ev_soc < next_ev_soc:
             ladeleistung = min(11, next_ev_soc - ev_soc)
-            if ueberschuss >= ladeleistung:
-                # Überschuss reicht aus, um die gewünschte Ladeleistung abzudecken
-                ev_soc += ladeleistung
-                pv_to_ev += ladeleistung
-                eigenverbrauch += pv_to_ev
-                ueberschuss -= ladeleistung
-            elif ueberschuss >= 1.4:
-                # Teilweise Laden mit Überschuss, Rest aus dem Netz
-                ladeleistung = ueberschuss
-                pv_to_ev += ladeleistung
-                ev_soc += pv_to_ev
-                eigenverbrauch += pv_to_ev
-                ueberschuss = 0
-            elif 0.9 < ueberschuss < 1.4:
-                # Netz unterstutzt mit max. 500 W den Überschussladen
-                netzbezug += 1.4 - ueberschuss
-                ladeleistung = min(1.4, ladeleistung)
-                ev_soc += ladeleistung
-                pv_to_ev += ueberschuss
-                eigenverbrauch += pv_to_ev
-                ueberschuss = 0
-            elif 8 <= uhrzeit < 18:
-                # Tagsüber, kann später noch Sonne geben
-                ladeleistung = 0
-            else:
-                ladeleistung = min(11, next_ev_soc - ev_soc)
+            state = 0.4
+            if 0 < ladeleistung < 1.4:
+                ladeleistung = 1.4
                 netzbezug += ladeleistung
                 ev_soc += ladeleistung
-        elif ev_zuhause == 1 and ev_soc < min_batterie_niveau:    
-            # Kein Überschuss, Laden bis Mindestladen erreicht ist
-            ladeleistung += min_batterie_niveau - ev_soc
-            netzbezug += ladeleistung
-            ev_soc += ladeleistung
+            else:
+                netzbezug += ladeleistung
+                ev_soc += ladeleistung
+
+        # 2.6: EV Laden wenn ev_soc < 10%
+        if ev_zuhause == 1 and ev_soc < min_batterie_niveau:
+            ladeleistung = min(11, min_batterie_niveau - ev_soc)
+            state = 0.5
+            if 0 < ladeleistung < 1.4:
+                ladeleistung = 1.4
+                netzbezug += ladeleistung
+                ev_soc += ladeleistung
+            else:
+                netzbezug += ladeleistung
+                ev_soc += ladeleistung
+        
+
+
+
+
+
+        # if ev_zuhause == 1 and ev_soc < next_ev_soc:
+        #     if 8 <= uhrzeit < 18:
+        #         # Tagsüber, kann später noch Sonne geben
+        #         ladeleistung = 0
+        #         state += 3
+        #     else:
+        #         ladeleistung = min(11, next_ev_soc - ev_soc, batteriekapazitaet - ev_soc)
+        #         if ladeleistung >= 1.4:
+        #             netzbezug += ladeleistung
+        #             ev_soc += ladeleistung
+        #             state += 4
+        #         else:
+        #             ladeleistung = 0
+        # elif ev_zuhause == 1 and ev_soc < min_batterie_niveau:
+        #     # Kein Überschuss, Laden bis Mindestladen erreicht ist
+        #     ladeleistung = max(min_batterie_niveau - ev_soc, batteriekapazitaet - ev_soc)
+        #     if ladeleistung >= 1.4:
+        #         netzbezug += ladeleistung
+        #         ev_soc += ladeleistung
+        #         state += 5
+        #     else:
+        #         ladeleistung = 0
         
         if ueberschuss > 0 and netzbezug > 0:
             if netzbezug >= ueberschuss:
@@ -549,12 +576,13 @@ def mit_hems(df, pv, homeoffice):
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
         df.loc[i, 'ev distanz'] = ev_distanz
+        df.loc[i, 'ev_state'] = state
     
     return df, df_ohne
 
-def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
+def mit_hems_bs(df, pv, bs_kapazitaet, homeoffice):
     # Vergleich ohne HEMS
-    df_ohne = mit_pvbs(df.copy(), pv, batteriekapazitaet, homeoffice)
+    df_ohne = mit_pvbs(df.copy(), pv, bs_kapazitaet, homeoffice)
     
     pv.index = pv.index.tz_localize(None)
     df.index = pd.to_datetime(df.index)
@@ -567,13 +595,15 @@ def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
     ev_aligned = ev_profil.reindex(df.index).fillna(0)
     df['ev zuhause'] = ev_aligned['EV_at_home']
     df['ev distanz'] = ev_aligned['distance_travelled']
+    df['next_day_ev_distanz'] = df.groupby(df.index.date)['ev distanz'].transform('sum').shift(-24)
     ev_soc = max_batterie_niveau
+    ev_verbrauch_arbeit = 22*2*ev_effizienz
     
     # Batteriespeicher (BS)
     c_rate = 1
     bs_effizienz = 0.96  # BYD HVS & HVM
     min_soc = 1
-    max_soc = batteriekapazitaet
+    max_soc = bs_kapazitaet
     bs_soc = 5 
 
     df['überschuss'] = 0.0 
@@ -583,12 +613,16 @@ def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
     df['BS to EV'] = 0.0
     df['EV Ladung'] = 0.0
     df['EV SOC'] = 0.0
+    df['ev_state'] = 0.0
 
     for i, row in df.iterrows():
         pv_ertrag = row['PV Ertrag']
         strombedarf = row['Strombedarf']
         ev_zuhause = row['ev zuhause']
         ev_distanz = row['ev distanz']
+        next_ev_distanz = row['next_day_ev_distanz']
+        uhrzeit = row.name.hour 
+        tag = row.name.dayofweek
         ladeleistung = 0
         pv_to_ev = 0
         bs_to_ev = 0
@@ -598,6 +632,9 @@ def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
         eigenverbrauch = 0
         entladung = 0
         netz_to_ev = 0
+        lade = 0
+        max_ev_laden = 0
+        state = 0
 
         # Step 1: Überschuss nach Strombedarf
         if pv_ertrag >= strombedarf:
@@ -607,19 +644,8 @@ def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
             ueberschuss = 0
             eigenverbrauch = pv_ertrag
             netzbezug = strombedarf - eigenverbrauch
-        
-        # Step 2: Berechne EV Ladezustand
-        if ev_zuhause == 0 and ev_distanz > 0:
-            ev_verbrauch = ev_distanz*ev_effizienz
-            if ev_soc - ev_verbrauch >= min_batterie_niveau:
-                ev_soc -= ev_verbrauch
-            else:
-                max_distanz = max(0, (ev_soc - min_batterie_niveau) / ev_effizienz)
-                ev_verbrauch = max_distanz * ev_effizienz
-                ev_soc -= ev_verbrauch
-                ev_distanz = max_distanz
 
-          # Step 3: Lade BS mit Überschuss
+        # Step 2: Lade BS mit Überschuss
         if ueberschuss > 0:
             ladepotenzial = ueberschuss * bs_effizienz
             bs_ladung = min(ladepotenzial, max_soc - bs_soc)
@@ -627,42 +653,89 @@ def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
             ueberschuss -= (bs_ladung/bs_effizienz)
             eigenverbrauch += bs_ladung
 
+        ueberschuss = max(0, ueberschuss)
         bs_ladeleistung = c_rate * bs_soc * bs_effizienz 
         
-        # Step 4: Lade EV wenn Zuhause
-        if ev_zuhause == 1 and ev_soc < max_batterie_niveau:
-            ladeleistung = min(max_ladeleistung, max_batterie_niveau - ev_soc)
-            if ueberschuss >= ladeleistung:
-                # Überschuss reicht aus, um die gewünschte Ladeleistung abzudecken
-                ev_soc += ladeleistung
-                pv_to_ev = ladeleistung
-                eigenverbrauch += pv_to_ev
-                ueberschuss -= ladeleistung
-            elif ueberschuss >= 1.4:
-                # Teilweise Laden mit Überschuss, Rest aus dem Netz
-                ladeleistung = ueberschuss
-                pv_to_ev = ladeleistung
-                ev_soc += pv_to_ev
-                eigenverbrauch += pv_to_ev
-                ueberschuss = 0
+        # Step 3: EV
+        # 3.1: Berechne EV Ladezustand
+        if ev_zuhause == 0 and ev_distanz > 0:
+            ev_verbrauch = ev_distanz * ev_effizienz
+            ev_soc = ev_soc - ev_verbrauch
+
+        # 3.2: EV mit PV Laden, wenn zuhause
+        if ev_zuhause == 1 and ev_soc < batteriekapazitaet and ueberschuss >= 0.9:
+            lade = min(ueberschuss, 11)
+            max_ev_laden = batteriekapazitaet - ev_soc
+            # Stelle sicher, dass mindestens 1.4 kWh geladen werden
+            if lade >= 1.4 and max_ev_laden >= 1.4:
+                lade = min(lade, max_ev_laden)
+                ev_soc += lade
+                ueberschuss -= lade
+                pv_to_ev += lade
+                state += 1
             elif 0.9 < ueberschuss < 1.4:
                 # Netz unterstutzt mit max. 500 W den Überschussladen
                 netzbezug += 1.4 - ueberschuss
-                ladeleistung = min(1.4, ladeleistung)
-                ev_soc += ladeleistung
-                pv_to_ev = ueberschuss
+                ladeleistung = 1.4
+                lade = 0
+                ev_soc = min(ev_soc + ladeleistung, batteriekapazitaet)  # Begrenzung
+                pv_to_ev += ueberschuss
                 eigenverbrauch += pv_to_ev
                 ueberschuss = 0
+                state += 2
             else:
-                ladeleistung = 0
+                lade = 0
+
+        # 3.3: Berechne benötigte EV SOC für den nächsten Tag unter der Woche
+        if homeoffice:
+            if tag in [0, 2] and ev_soc <= ev_verbrauch_arbeit:
+                next_ev_soc = ev_verbrauch_arbeit + min_batterie_niveau
+                state += 0.1
+            else:
+                next_ev_soc = 0
+        else:
+            if tag in [0, 1, 2, 3, 6] and ev_soc <= ev_verbrauch_arbeit:
+                next_ev_soc = ev_verbrauch_arbeit + min_batterie_niveau
+                state += 0.2
+            else:
+                next_ev_soc = 0
             
-            if ev_soc < min_batterie_niveau and bs_soc <= min_soc: 
-                # Kein Überschuss, Laden bis Mindestladen erreicht ist
-                ladeleistung += min_batterie_niveau - ev_soc
+        # 3.4 Berechne benötigte EV SOC für das Wochenende
+        next_ev_verbrauch = next_ev_distanz * ev_effizienz
+        if tag in [4, 5] and next_ev_verbrauch > ev_soc:
+            next_ev_soc = next_ev_verbrauch + min_batterie_niveau
+            state += 0.3
+        else:
+            next_ev_soc = 0
+
+        # 3.5: EV Laden wenn notwendig für den nächsten Tag
+        notwendig = next_ev_soc + min_batterie_niveau
+        if ev_zuhause == 1 and ev_soc < notwendig:
+            ladeleistung += min(11, next_ev_soc)
+            state = 0.4
+            if 0 < ladeleistung < 1.4:
+                ladeleistung += 1.4
+                netzbezug += ladeleistung
+                ev_soc += ladeleistung
+            else:
+                netzbezug += ladeleistung
+                ev_soc += ladeleistung
+
+        # 3.6: EV Laden wenn ev_soc < 10%
+        if ev_zuhause == 1 and ev_soc < min_batterie_niveau:
+            ladeleistung += min(11, min_batterie_niveau-ev_soc)
+            state = 0.5
+            if 0 < ladeleistung < 1.4:
+                ladeleistung += 1.4
+                netzbezug += ladeleistung
+                ev_soc += ladeleistung
+            else:
                 netzbezug += ladeleistung
                 ev_soc += ladeleistung
         
-        # Step 5: BS Entladen?
+        ladeleistung = ladeleistung + lade
+        
+        # Step 4: BS Entladen?
         if netzbezug > 0:
             # Entlade Batterie, um Energiemangel zu decken
             potential_entladung = min(netzbezug/bs_effizienz, bs_ladeleistung)
@@ -703,7 +776,8 @@ def mit_hems_bs(df, pv, batteriekapazitaet, homeoffice):
         df.loc[i, 'ev distanz'] = ev_distanz
         df.loc[i, 'bs entladung'] = entladung
         df.loc[i, 'Netz to EV'] = netz_to_ev
-    
+        df.loc[i, 'ev_state'] = state
+
     return df, df_ohne
 
 # Ersparnis mit HEMS

@@ -20,7 +20,7 @@ def get_waermepumpe(heizlast):
         wp_groesse = 16
         nenn_heizleistung = 14
         wp = 'Nibe F2040-16'
-    return wp_groesse
+    return wp_groesse, nenn_heizleistung
 
 def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
     # Pufferspeicher auswählen 
@@ -59,51 +59,76 @@ def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
     return V_ps, PS_verlust, Q_ps
 
 # Berechnen - immer vorher df aus def ohne_pv erstellen 
-def ohne_pv(df, Q_ps, PS_verlust):
+def ohne_pv(df, Q_ps, PS_verlust, nenn_heizleistung):
     ## WP und PS Zusammenfügen
     df['Wärmegehalt PS'] = np.nan
+    df['Q_ps_neu'] = 0.0
     df['Ladezustand PS'] = np.nan
     df['Heizleistung neu'] = np.nan
     df['temp_mittel'] = df['T_aussen'].rolling(window=48, min_periods=1).mean()
+    df['Wärmeverlust'] = np.nan
+    df['State'] = 0
+    
     # df['Wärmebedarf_mittel'] = df['Heizwärmebedarf'].rolling(window=48, min_periods=1).mean()
 
     # Set 1. Reihe 
-    df.iloc[0, df.columns.get_loc('Wärmegehalt PS')] = Q_ps  
-    df.iloc[0, df.columns.get_loc('Ladezustand PS')] = 1 
-    df.iloc[0, df.columns.get_loc('Heizleistung neu')] = df.iloc[0, df.columns.get_loc('Heizleistung')]
+    # df.iloc[0, df.columns.get_loc('Wärmegehalt PS')] = Q_ps  
+    # df.iloc[0, df.columns.get_loc('Ladezustand PS')] = 1 
+    # df.iloc[0, df.columns.get_loc('Heizleistung neu')] = df.iloc[0, df.columns.get_loc('Heizleistung')]
 
-    max_heizleistung = df['Heizleistung'].max()
+    max_heizleistung = nenn_heizleistung
+    waerme_ps = Q_ps
+    V = 300
+    d = 1
+    c_wasser = 4.18
 
-    for time in df.index[1:]:  # ab der zweiten Zeile
-        previous_time = time - pd.Timedelta(hours=1)
-        temp_mittel = df.at[time, 'temp_mittel']
-        heizwaermebedarf = df.at[time, 'Heizwärmebedarf']
-        heizleistung = df.at[time, 'Heizleistung']
-        heizleistung_neu = df.at[time, 'Heizleistung neu']
-        waerme_ps = df.at[time, 'Wärmegehalt PS']
-        waerme_ps_p = df.at[previous_time, 'Wärmegehalt PS']
+    for i, row in df.iterrows():  # ab der zweiten Zeile
+        temp_mittel = row['temp_mittel']
+        heizwaermebedarf = row['Heizwärmebedarf']
+        heizleistung = row['Heizleistung']
+        t_d = row['T_vor'] - row['T_rueck']
+        verlust = 0.0
+        lade_ps = 0.0
+        heizleistung_neu = 0.0
+        state = 0.0
+        hz = 0.0
        
-        if temp_mittel <= 15: 
+        if temp_mittel <= 15:
+            deckung = waerme_ps + heizleistung - heizwaermebedarf - PS_verlust 
             if heizwaermebedarf == 0:
                 heizleistung_neu = 0
-                waerme_ps = waerme_ps_p - heizwaermebedarf - PS_verlust
-            elif heizwaermebedarf > heizleistung:
-                heizleistung_neu = heizwaermebedarf
-                waerme_ps = waerme_ps_p - heizwaermebedarf - PS_verlust + heizleistung_neu
-            elif waerme_ps_p > heizwaermebedarf:
-                heizleistung_neu = 0
-                waerme_ps = waerme_ps_p - heizwaermebedarf - PS_verlust
-            elif waerme_ps_p < heizwaermebedarf:
-                if Q_ps - waerme_ps_p > heizleistung:
-                    heizleistung_neu = heizleistung + Q_ps - waerme_ps_p
-                    waerme_ps = waerme_ps_p + heizleistung_neu - heizwaermebedarf - PS_verlust
-                else:
+                waerme_ps -= PS_verlust
+                state = 1
+                if waerme_ps < Q_ps:
+                    # PS Laden wenn nicht vollständig geladen
                     heizleistung_neu = heizleistung
-                    waerme_ps = waerme_ps_p + heizleistung_neu - heizwaermebedarf - PS_verlust
+                    lade_ps = min(heizleistung_neu, Q_ps-waerme_ps)
+                    waerme_ps += lade_ps - PS_verlust
+                    verlust = heizleistung_neu - lade_ps
+                    state = 2
+            elif heizwaermebedarf > 0:
+                if deckung < 0:
+                    # Heizwärmebedarf wird nicht mit Heizlesitung und PS gedeckt, dann Heizleistung höher stellen
+                    hz = heizleistung - deckung
+                    heizleistung_neu = min(hz + Q_ps, max_heizleistung)
+                    waerme_ps -= (heizwaermebedarf + PS_verlust - heizleistung_neu)
+                    state = 3
+                elif deckung > 0:
+                    # Heizwärmebedarf wird gedeckt und übrige Wärme wird in PS gespeichert
+                    heizleistung_neu = heizleistung
+                    lade_ps = min(deckung, Q_ps-waerme_ps)
+                    waerme_ps += lade_ps - PS_verlust
+                    state = 4
+                else:
+                    # Deckung == 0, also waerme_ps == 0 -> sollten Heizleistung höher stellen damit PS geladen wird, ohne max_heizleistung zu überschreiten
+                    heizleistung_neu = min(heizleistung + Q_ps, max_heizleistung)
+                    waerme_ps -= (heizwaermebedarf + PS_verlust - heizleistung_neu)
+                    state = 5
         else:
             # "T_mittel > 15° <- wird nicht geheizt
             heizleistung_neu = 0
-            waerme_ps = waerme_ps_p - PS_verlust 
+            waerme_ps -= PS_verlust
+            state = 6
 
         # Wärmegehalt darf nicht negativ sein
         if waerme_ps <= 0:
@@ -111,24 +136,28 @@ def ohne_pv(df, Q_ps, PS_verlust):
 
         # Berechnung des Ladezustands
         ladezustand = waerme_ps / Q_ps
-        if ladezustand > 1:
-            # print("Ladezustand > 1, setze Ladezustand auf 1")
-            ladezustand_ps = 1
-        elif ladezustand <= 0:
-            # print(f"Ladezustand <= 0, setzte 0")
-            ladezustand_ps = 0
-        else:
-            ladezustand_ps = ladezustand
+        # if ladezustand > 1:
+        #     # print("Ladezustand > 1, setze Ladezustand auf 1")
+        #     ladezustand_ps = 1
+        # elif ladezustand <= 0:
+        #     # print(f"Ladezustand <= 0, setzte 0")
+        #     ladezustand_ps = 0
+        # else:
+        #     ladezustand_ps = ladezustand
 
             
      # Assign calculated values back to the DataFrame
-        df.at[time, 'Wärmegehalt PS'] = waerme_ps
-        df.at[time, 'Ladezustand PS'] = ladezustand_ps
-        df.at[time, 'Heizleistung neu'] = heizleistung_neu
+        df.loc[i, 'Wärmegehalt PS'] = waerme_ps
+        df.loc[i, 'Ladezustand PS'] = ladezustand
+        df.loc[i, 'Heizleistung neu'] = heizleistung_neu
+        df.loc[i, 'Wärmeverlust'] = verlust
+        df.loc[i, 'State'] = state
+        df.loc[i, 'Q_ps_neu'] = V*d*c_wasser*t_d/3600
+
     
     # Handle rows where Heizleistung neu == 0
-    df.loc[df['Heizleistung neu'] == 0, 'COP'] = 0
-    df['COP'] = df['COP'].replace(0, np.nan).astype(float)
+    df.loc[df['Heizleistung neu'] == 0, 'COP'] = np.nan
+    # df['COP'] = df['COP'].replace(0, np.nan).astype(float)
 
     # Calculate the mean COP for rows where Heizleistung neu > 0
     cop_filtered = df[df['Heizleistung neu'] > 0]['COP']
