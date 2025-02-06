@@ -17,12 +17,12 @@ def mit_pv(df, pv, homeoffice):
     pv_aligned = pv.reindex(df.index).fillna(0)
     df['PV Ertrag'] = pv_aligned.values.astype(float)
 
-    ev_profil = pd.read_csv(f'./Inputs/car_availability_homeoffice_{homeoffice}_2014.csv', index_col=0)
+    ev_profil = pd.read_csv(f'./Inputs/ev_homeoffice_{homeoffice}_2014.csv', index_col=0)
     ev_profil.index = pv.index.tz_localize(None)
     ev_profil.index = pd.to_datetime(df.index)
     ev_aligned = ev_profil.reindex(df.index).fillna(0)
-    df['ev zuhause'] = ev_aligned['EV_at_home']
-    df['ev distanz'] = ev_aligned['distance_travelled']
+    df['ev zuhause'] = ev_aligned['EV zuhause']
+    df['ev distanz'] = ev_aligned['Distanz']
     ev_soc = max_batterie_niveau
 
     df['überschuss'] = 0.0 
@@ -98,30 +98,31 @@ def mit_pv(df, pv, homeoffice):
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
+        df.loc[i, 'EV %'] = ev_soc/batteriekapazitaet
         df.loc[i, 'ev distanz'] = ev_distanz
 
     return df
 
-def mit_pvbs(df, pv, batteriekapazitaet, homeoffice):
+def mit_pvbs(df, pv, bs_kapazitaet, homeoffice):
     pv.index = pv.index.tz_localize(None)
     df.index = pd.to_datetime(df.index)
     pv_aligned = pv.reindex(df.index).fillna(0)
     df['PV Ertrag'] = pv_aligned.values.astype(float)
 
-    ev_profil = pd.read_csv(f'./Inputs/car_availability_homeoffice_{homeoffice}_2014.csv', index_col=0)
+    ev_profil = pd.read_csv(f'./Inputs/ev_homeoffice_{homeoffice}_2014.csv', index_col=0)
     ev_profil.index = pv.index.tz_localize(None)
     ev_profil.index = pd.to_datetime(df.index)
     ev_aligned = ev_profil.reindex(df.index).fillna(0)
-    df['ev zuhause'] = ev_aligned['EV_at_home']
-    df['ev distanz'] = ev_aligned['distance_travelled']
+    df['ev zuhause'] = ev_aligned['EV zuhause']
+    df['ev distanz'] = ev_aligned['Distanz']
     ev_soc = max_batterie_niveau
 
     # Batteriespeicher (BS)
     c_rate = 1
     bs_effizienz = 0.96  # BYD HVS & HVM
     min_soc = 1
-    max_soc = batteriekapazitaet
-    bs_soc = 5 
+    max_soc = bs_kapazitaet
+    bs_soc = 0.5*bs_kapazitaet
 
     ev_soc = max_batterie_niveau
 
@@ -235,7 +236,9 @@ def mit_pvbs(df, pv, batteriekapazitaet, homeoffice):
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
+        df.loc[i, 'EV %'] = ev_soc/batteriekapazitaet
         df.loc[i, 'BS SOC'] = bs_soc
+        df.loc[i, 'BS %'] = bs_soc/bs_kapazitaet
         df.loc[i, 'ev distanz'] = ev_distanz
         df.loc[i, 'bs entladung'] = entladung
         df.loc[i, 'Netz to EV'] = netz_to_ev
@@ -407,12 +410,12 @@ def mit_hems(df, pv, homeoffice):
     pv_aligned = pv.reindex(df.index).fillna(0)
     df['PV Ertrag'] = pv_aligned.values.astype(float)
 
-    ev_profil = pd.read_csv(f'./Inputs/car_availability_homeoffice_{homeoffice}_2014.csv', index_col=0)
+    ev_profil = pd.read_csv(f'./Inputs/ev_homeoffice_{homeoffice}_2014.csv', index_col=0)
     ev_profil.index = pv.index.tz_localize(None)
     ev_profil.index = pd.to_datetime(df.index)
     ev_aligned = ev_profil.reindex(df.index).fillna(0)
-    df['ev zuhause'] = ev_aligned['EV_at_home']
-    df['ev distanz'] = ev_aligned['distance_travelled']
+    df['ev zuhause'] = ev_aligned['EV zuhause']
+    df['ev distanz'] = ev_aligned['Distanz']
     df['next_day_ev_distanz'] = df.groupby(df.index.date)['ev distanz'].transform('sum').shift(-24)
     ev_soc = max_batterie_niveau
     ev_verbrauch_arbeit = 22*2*ev_effizienz
@@ -530,35 +533,8 @@ def mit_hems(df, pv, homeoffice):
             else:
                 netzbezug += ladeleistung
                 ev_soc += ladeleistung
-        
 
-
-
-
-
-        # if ev_zuhause == 1 and ev_soc < next_ev_soc:
-        #     if 8 <= uhrzeit < 18:
-        #         # Tagsüber, kann später noch Sonne geben
-        #         ladeleistung = 0
-        #         state += 3
-        #     else:
-        #         ladeleistung = min(11, next_ev_soc - ev_soc, batteriekapazitaet - ev_soc)
-        #         if ladeleistung >= 1.4:
-        #             netzbezug += ladeleistung
-        #             ev_soc += ladeleistung
-        #             state += 4
-        #         else:
-        #             ladeleistung = 0
-        # elif ev_zuhause == 1 and ev_soc < min_batterie_niveau:
-        #     # Kein Überschuss, Laden bis Mindestladen erreicht ist
-        #     ladeleistung = max(min_batterie_niveau - ev_soc, batteriekapazitaet - ev_soc)
-        #     if ladeleistung >= 1.4:
-        #         netzbezug += ladeleistung
-        #         ev_soc += ladeleistung
-        #         state += 5
-        #     else:
-        #         ladeleistung = 0
-        
+        # Überschuss und Netzbezug noch Mal prüfen
         if ueberschuss > 0 and netzbezug > 0:
             if netzbezug >= ueberschuss:
                 netzbezug -= ueberschuss
@@ -575,6 +551,7 @@ def mit_hems(df, pv, homeoffice):
         df.loc[i, 'EV Ladung'] = ladeleistung + lade
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
+        df.loc[i, 'EV %'] = ev_soc/batteriekapazitaet
         df.loc[i, 'ev distanz'] = ev_distanz
         df.loc[i, 'ev_state'] = state
     
@@ -589,12 +566,12 @@ def mit_hems_bs(df, pv, bs_kapazitaet, homeoffice):
     pv_aligned = pv.reindex(df.index).fillna(0)
     df['PV Ertrag'] = pv_aligned.values.astype(float)
 
-    ev_profil = pd.read_csv(f'./Inputs/car_availability_homeoffice_{homeoffice}_2014.csv', index_col=0)
+    ev_profil = pd.read_csv(f'./Inputs/ev_homeoffice_{homeoffice}_2014.csv', index_col=0)
     ev_profil.index = pv.index.tz_localize(None)
     ev_profil.index = pd.to_datetime(df.index)
     ev_aligned = ev_profil.reindex(df.index).fillna(0)
-    df['ev zuhause'] = ev_aligned['EV_at_home']
-    df['ev distanz'] = ev_aligned['distance_travelled']
+    df['ev zuhause'] = ev_aligned['EV zuhause']
+    df['ev distanz'] = ev_aligned['Distanz']
     df['next_day_ev_distanz'] = df.groupby(df.index.date)['ev distanz'].transform('sum').shift(-24)
     ev_soc = max_batterie_niveau
     ev_verbrauch_arbeit = 22*2*ev_effizienz
@@ -604,7 +581,7 @@ def mit_hems_bs(df, pv, bs_kapazitaet, homeoffice):
     bs_effizienz = 0.96  # BYD HVS & HVM
     min_soc = 1
     max_soc = bs_kapazitaet
-    bs_soc = 5 
+    bs_soc = 0.5*bs_kapazitaet
 
     df['überschuss'] = 0.0 
     df['eigenverbrauch'] = 0.0
@@ -772,7 +749,9 @@ def mit_hems_bs(df, pv, bs_kapazitaet, homeoffice):
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
+        df.loc[i, 'EV %'] = ev_soc/batteriekapazitaet
         df.loc[i, 'BS SOC'] = bs_soc
+        df.loc[i, 'BS %'] = bs_soc/bs_kapazitaet
         df.loc[i, 'ev distanz'] = ev_distanz
         df.loc[i, 'bs entladung'] = entladung
         df.loc[i, 'Netz to EV'] = netz_to_ev

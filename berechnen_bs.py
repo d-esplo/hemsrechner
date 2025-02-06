@@ -20,18 +20,19 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
     discharge_efficiency = 0.96
     min_soc = 1
     max_soc = battery_capacity
-    battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
+    battery_soc = 0.5*battery_capacity  # Initial state of charge in kWh (50% of battery capacity)
 
     if anlage_groesse<battery_capacity:
         battery_capacity = anlage_groesse
 
     # Adding columns to the DataFrame for the simulation results
     df['battery_soc'] = 0.0
+    df['soc %'] = 0.0
     df['battery_charge'] = 0.0
     df['battery_discharge'] = 0.0
-    df['grid_export'] = 0.0
+    df['netzeinspeisung'] = 0.0
     df['überschuss'] = 0.0
-    df['grid_import'] = 0.0
+    df['netzbezug'] = 0.0
     df['eigenverbrauch'] = 0.0
 
     # Simulation loop
@@ -58,9 +59,8 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
 
             # Update DataFrame
             df.loc[i, 'battery_charge'] = charge_to_battery
-            df.loc[i, 'grid_export'] = grid_export if grid_export > 0 else 0.0
-            df.loc[i, 'überschuss'] = ueberschuss if ueberschuss > 0 else 0.0
-            df.loc[i, 'grid_import'] = 0.0  # No grid import in surplus case
+            df.loc[i, 'netzeinspeisung'] = grid_export if grid_export > 0 else 0.0
+            df.loc[i, 'netzbezug'] = 0.0  # No grid import in surplus case
             df.loc[i, 'eigenverbrauch'] = strombedarf
 
         elif strombedarf > 0:
@@ -86,13 +86,13 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
 
             # Update DataFrame
             df.loc[i, 'battery_discharge'] = discharge_from_battery
-            df.loc[i, 'grid_import'] = grid_import
-            df.loc[i, 'grid_export'] = 0.0  # No grid export in deficit case
-            df.loc[i, 'überschuss'] = 0.0  # No excess PV in deficit case
+            df.loc[i, 'netzbezug'] = grid_import
+            df.loc[i, 'netzeinspeisung'] = 0.0  # No grid export in deficit case
             df.loc[i, 'eigenverbrauch'] = energy_from_battery + pv_ertrag
 
         # Update SOC in the DataFrame
         df.loc[i, 'battery_soc'] = battery_soc
+        df.loc[i, 'soc %'] = battery_soc/battery_capacity
         
     # Optional: Set battery_soc to not exceed capacity or drop below 0
     # df['battery_soc'] = df['battery_soc'].clip(lower=min_soc, upper=max_soc)
@@ -101,8 +101,8 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
 def ersparnis(df, anlage_groesse, strompreis):
     # Jahresertrag
     pv = round(sum(df['PV Ertrag']))
-    netzbezug = round(sum(df['grid_import']))
-    einspeisung = round(sum(df['grid_export']))
+    netzbezug = round(sum(df['netzbeuzug']))
+    einspeisung = round(sum(df['netzeinspeisung']))
 
     # Eingenverbrauch der PV-Produktion
     eigenverbrauch = round(sum(df['eigenverbrauch']))

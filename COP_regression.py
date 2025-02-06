@@ -47,16 +47,16 @@ def COP_regression(df):
     t_aussen_new = np.arange(-20, 14.5, 0.5)  # Außentemperaturen bis 14°C
 
     # Vorbereitung der Daten für die Regression
-    X_train = np.array([(x, y) for x in df.columns.astype(float) for y in df.index.astype(float)])
+    x_train = np.array([(x, y) for x in df.columns.astype(float) for y in df.index.astype(float)])
     y_train = df.values.flatten()
 
     # Lineares Regressionsmodell trainieren
     model = LinearRegression()
-    model.fit(X_train, y_train)
+    model.fit(x_train, y_train)
 
     # Vorhersage für neue Werte
-    X_pred = np.array([(x, y) for x in t_vor_new for y in t_aussen_new])
-    y_pred = model.predict(X_pred)
+    x_pred = np.array([(x, y) for x in t_vor_new for y in t_aussen_new])
+    y_pred = model.predict(x_pred)
 
     # Umwandlung in DataFrame
     cop_regression = pd.DataFrame(y_pred.reshape(len(t_aussen_new), len(t_vor_new)), 

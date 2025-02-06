@@ -59,13 +59,45 @@ def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
     return V_ps, PS_verlust, Q_ps
 
 # Berechnen - immer vorher df aus def ohne_pv erstellen 
+def ohne_2(df, Q_ps, PS_verlust):
+## WP und PS Zusammenfügen
+    df['Wärmegehalt PS'] = np.nan
+    df['Q_ps_neu'] = 0.0
+    df['Ladezustand PS'] = np.nan
+    df['Heizleistung neu'] = np.nan
+    df['temp_mittel'] = df['T_aussen'].rolling(window=24, min_periods=1).mean()
+    df['Wärmeverlust'] = np.nan
+    df['State'] = 0
+
+    waerme_ps = Q_ps
+    V = 300
+    d = 1
+    c_wasser = 4.18
+
+    for i, row in df.iterrows():  # ab der zweiten Zeile
+        temp_mittel = row['temp_mittel']
+        heizwaermebedarf = row['Heizwärmebedarf']
+        heizleistung = row['Heizleistung']
+        t_d = row['T_vor'] - row['T_rueck']
+        verlust = 0.0
+        lade_ps = 0.0
+        heizleistung_neu = 0.0
+        state = 0.0
+        hz = 0.0
+        ladezustand = 1
+        
+
+        #if temp_mittel <= 15:
+
+    return df
+
 def ohne_pv(df, Q_ps, PS_verlust, nenn_heizleistung):
     ## WP und PS Zusammenfügen
     df['Wärmegehalt PS'] = np.nan
     df['Q_ps_neu'] = 0.0
     df['Ladezustand PS'] = np.nan
     df['Heizleistung neu'] = np.nan
-    df['temp_mittel'] = df['T_aussen'].rolling(window=48, min_periods=1).mean()
+    df['temp_mittel'] = df['T_aussen'].rolling(window=24, min_periods=1).mean()
     df['Wärmeverlust'] = np.nan
     df['State'] = 0
     
@@ -154,7 +186,6 @@ def ohne_pv(df, Q_ps, PS_verlust, nenn_heizleistung):
         df.loc[i, 'State'] = state
         df.loc[i, 'Q_ps_neu'] = V*d*c_wasser*t_d/3600
 
-    
     # Handle rows where Heizleistung neu == 0
     df.loc[df['Heizleistung neu'] == 0, 'COP'] = np.nan
     # df['COP'] = df['COP'].replace(0, np.nan).astype(float)

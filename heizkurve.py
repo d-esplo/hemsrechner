@@ -31,6 +31,7 @@ def get_heizkurve(heizung, T_aussen, T_n_aussen):
     return heizkurve, T_soll, T_n_vor, T_n_rueck
 
 def plot_heizkurve(heizkurve):
+    t_aussen = heizkurve.iloc[heizkurve['T_aussen'], ]
     plt.plot(heizkurve['T_aussen'], heizkurve['T_vor'], label = 'Vorlauftempeteratur')
     plt.plot(heizkurve['T_aussen'], heizkurve['T_rueck'], label = 'Rücklauftemperatur')
     plt.xlabel('Außentemperatur [°C]')
@@ -90,15 +91,15 @@ def get_heizleistung_profil(df, heizleistung_auslegung):
 
 def get_cop(wp_groesse, df):
     # Load the COP table
-    COP = pd.read_csv(f'./Inputs/COP_Nibe F2040-{wp_groesse}_regression.csv', index_col=0)
+    COP = pd.read_csv(f'./Inputs/COP_Nibe F2040-{wp_groesse}.csv', index_col=0)
 
     # Ensure index and columns are floats
     COP.index = COP.index.astype(float)
     COP.columns = COP.columns.astype(float)
 
     df['COP'] = None
-    df['COP_60'] = None
-    df['COP_40'] = None
+    # df['COP_60'] = None
+    # df['COP_40'] = None
 
     for i, row in df.iterrows():
         T_aussen = row['T_aussen']
@@ -112,8 +113,8 @@ def get_cop(wp_groesse, df):
 
         try:
             df.at[i, 'COP'] = COP.loc[T_aussen, T_vor]
-            df.at[i, 'COP_60'] = COP.loc[T_aussen, 60]
-            df.at[i, 'COP_40'] = COP.loc[T_aussen, 40]
+            # df.at[i, 'COP_60'] = COP.loc[T_aussen, 60]
+            # df.at[i, 'COP_40'] = COP.loc[T_aussen, 40]
         except KeyError:
             df.at[i, 'COP'] = np.nan  # Handle missing data gracefully
 
