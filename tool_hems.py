@@ -1,4 +1,4 @@
-# In Terminal eingeben:
+# In Terminal eingeben für remote deploy:
 # streamlit run tool_hems.py --server.port 5996
 
 import streamlit as st
@@ -97,12 +97,12 @@ if 'EV' in selection:
     if 'Batteriespeicher' in selection:
         df_evbs, df_ohne = berechnen_ev.mit_hems_bs(df.copy(), pv, battery_capacity, homeoffice)
         ergebnisse = berechnen_ev.ersparnis_hems_bs(df_evbs, df_ohne, anlage_groesse, strompreis)
-        plot_data = ['PV Ertrag', 'Strombedarf', 'überschuss', 'netzbezug', 'BS SOC', 'EV Ladung']
+        plot_data = ['PV Ertrag', 'Strombedarf', 'einspeisung', 'netzbezug', 'BS SOC', 'EV Ladung']
         df_plt = df_evbs.copy()
     else:
          df_b, df_ohne = berechnen_ev.mit_hems(df.copy(), pv, homeoffice)
          ergebnisse = berechnen_ev.ersparnis_hems(df_b, df_ohne, anlage_groesse, strompreis)
-         plot_data = ['PV Ertrag', 'Strombedarf', 'überschuss', 'netzbezug', 'EV Ladung']
+         plot_data = ['PV Ertrag', 'Strombedarf', 'einspeisung', 'netzbezug', 'EV Ladung']
          df_plt = df_b.copy()
 
     berechnen_ev.print_ersparnis_hems_st(ergebnisse)
