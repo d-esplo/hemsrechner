@@ -232,7 +232,7 @@ def mit_pvbs(df, pv, bs_kapazitaet, homeoffice):
         df.loc[i, 'PV to EV'] = pv_to_ev
         df.loc[i, 'bs ladung'] = bs_ladung
         df.loc[i, 'BS to EV'] = bs_to_ev
-        df.loc[i, 'einspeisungs'] = ueberschuss
+        df.loc[i, 'einspeisung'] = ueberschuss
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc

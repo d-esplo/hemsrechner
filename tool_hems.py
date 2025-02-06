@@ -123,7 +123,9 @@ else:
 # 1 Tag - pro Stunde
 ''
 km = round(df_plt['ev distanz'].sum())
-f'gefahrene km: {km}'
+'Annahmen:'
+f'Gefahrene km mit EV: {km}'
+'EV wird nur zuhause geladen'
 ''
 st.subheader("Plots", divider=True)
 
