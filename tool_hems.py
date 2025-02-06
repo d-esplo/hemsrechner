@@ -134,9 +134,16 @@ monat = st.selectbox(
     (range(1, 13)))
 
 f'## Tag: 1.{monat}'
-tag = df_plt.loc[f'2014-{monat:02d}-01 00:00:00':f'2014-{monat:02d}-01 23:00:00', plot_data]
-st.line_chart(tag)
-''
+col1, col2 = st.columns(2)
+with col1:
+    tag = df_plt.loc[f'2014-{monat:02d}-01 00:00:00':f'2014-{monat:02d}-01 23:00:00', plot_data]
+    st.line_chart(tag)
+    ''
+
+with col2:
+    tag = df_ohne.loc[f'2014-{monat:02d}-01 00:00:00':f'2014-{monat:02d}-01 23:00:00', plot_data]
+    st.line_chart(tag)
+
 f'## Drei Tage im Monat: {monat}'
 woche = df_plt.loc[f'2014-{monat:02d}-01 00:00:00':f'2014-{monat:02d}-03 23:00:00', plot_data]
 st.line_chart(woche)
