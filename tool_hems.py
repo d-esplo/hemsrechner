@@ -111,7 +111,7 @@ if 'EV' in selection:
 else:
     df_pv = berechnen_bs.mit_pv(df.copy(), pv, anlage_groesse, battery_capacity)
     ergebnisse = berechnen_bs.ersparnis(df_pv, anlage_groesse, strompreis)
-    plot_data = ['PV Ertrag', 'Strombedarf', 'überschuss', 'netzbezug', 'BS SOC']
+    plot_data = ['PV Ertrag', 'Strombedarf', 'einspeisung', 'netzbezug', 'BS SOC']
     df_plt = df_pv.copy()
     berechnen_bs.print_ersparnis_st(ergebnisse)
 
@@ -128,7 +128,7 @@ f'gefahrene km: {km}'
 st.subheader("Plots", divider=True)
 
 monat = st.selectbox(
-    "Monat asuwählen",
+    "Monat auswählen",
     (range(1, 13)))
 
 f'## Tag: 1.{monat}'

@@ -101,7 +101,7 @@ def mit_pv(df, pv, anlage_groesse, battery_capacity):
 def ersparnis(df, anlage_groesse, strompreis):
     # Jahresertrag
     pv = round(sum(df['PV Ertrag']))
-    netzbezug = round(sum(df['netzbeuzug']))
+    netzbezug = round(sum(df['netzbezug']))
     einspeisung = round(sum(df['netzeinspeisung']))
 
     # Eingenverbrauch der PV-Produktion

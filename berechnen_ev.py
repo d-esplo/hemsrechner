@@ -25,7 +25,7 @@ def mit_pv(df, pv, homeoffice):
     df['ev distanz'] = ev_aligned['Distanz']
     ev_soc = max_batterie_niveau
 
-    df['überschuss'] = 0.0 
+    df['einspeisung'] = 0.0 
     df['eigenverbrauch'] = 0.0
     df['netzbezug'] = 0.0
     df['PV to EV'] = 0.0
@@ -94,7 +94,7 @@ def mit_pv(df, pv, homeoffice):
 
         df.loc[i, 'eigenverbrauch'] = eigenverbrauch
         df.loc[i, 'PV to EV'] = pv_to_ev
-        df.loc[i, 'überschuss'] = ueberschuss
+        df.loc[i, 'einspeisung'] = ueberschuss
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
@@ -126,7 +126,7 @@ def mit_pvbs(df, pv, bs_kapazitaet, homeoffice):
 
     ev_soc = max_batterie_niveau
 
-    df['überschuss'] = 0.0 
+    df['einspeisung'] = 0.0 
     df['eigenverbrauch'] = 0.0
     df['netzbezug'] = 0.0
     df['PV to EV'] = 0.0
@@ -232,7 +232,7 @@ def mit_pvbs(df, pv, bs_kapazitaet, homeoffice):
         df.loc[i, 'PV to EV'] = pv_to_ev
         df.loc[i, 'bs ladung'] = bs_ladung
         df.loc[i, 'BS to EV'] = bs_to_ev
-        df.loc[i, 'überschuss'] = ueberschuss
+        df.loc[i, 'einspeisungs'] = ueberschuss
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
@@ -250,7 +250,7 @@ def ersparnis_pv(df, anlage_groesse, strompreis):
     # Jahresertrag
     pv = round(sum(df['PV Ertrag']))
     netzbezug = round(sum(df['netzbezug']))
-    einspeisung = round(sum(df['überschuss']))
+    einspeisung = round(sum(df['einspeisung']))
     strombedarf = round(sum(df['Strombedarf']))
     pv_to_ev = round(sum(df['PV to EV']))
 
@@ -299,7 +299,7 @@ def ersparnis_pvbs(df, anlage_groesse, strompreis):
     # Jahresertrag
     pv = round(sum(df['PV Ertrag']))
     netzbezug = round(sum(df['netzbezug']))
-    einspeisung = round(sum(df['überschuss']))
+    einspeisung = round(sum(df['einspeisung']))
     strombedarf = round(sum(df['Strombedarf']))
     pv_to_ev = round(sum(df['PV to EV']))
     pv_to_bs = round(sum(df['bs ladung']))
@@ -420,7 +420,7 @@ def mit_hems(df, pv, homeoffice):
     ev_soc = max_batterie_niveau
     ev_verbrauch_arbeit = 22*2*ev_effizienz
 
-    df['überschuss'] = 0.0 
+    df['einspeisung'] = 0.0 
     df['eigenverbrauch'] = 0.0
     df['netzbezug'] = 0.0
     df['PV to EV'] = 0.0
@@ -547,7 +547,7 @@ def mit_hems(df, pv, homeoffice):
 
         df.loc[i, 'eigenverbrauch'] = eigenverbrauch
         df.loc[i, 'PV to EV'] = pv_to_ev
-        df.loc[i, 'überschuss'] = ueberschuss
+        df.loc[i, 'einspeisung'] = ueberschuss
         df.loc[i, 'EV Ladung'] = ladeleistung + lade
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
@@ -583,7 +583,7 @@ def mit_hems_bs(df, pv, bs_kapazitaet, homeoffice):
     max_soc = bs_kapazitaet
     bs_soc = 0.5*bs_kapazitaet
 
-    df['überschuss'] = 0.0 
+    df['einspeisung'] = 0.0 
     df['eigenverbrauch'] = 0.0
     df['netzbezug'] = 0.0
     df['PV to EV'] = 0.0
@@ -745,7 +745,7 @@ def mit_hems_bs(df, pv, bs_kapazitaet, homeoffice):
         df.loc[i, 'PV to EV'] = pv_to_ev
         df.loc[i, 'bs ladung'] = bs_ladung
         df.loc[i, 'BS to EV'] = bs_to_ev
-        df.loc[i, 'überschuss'] = ueberschuss
+        df.loc[i, 'einspeisung'] = ueberschuss
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.loc[i, 'netzbezug'] = netzbezug
         df.loc[i, 'EV SOC'] = ev_soc
@@ -765,8 +765,8 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
     pv = round(sum(df['PV Ertrag']))
     netzbezug = round(sum(df['netzbezug']))
     netzbezug_ohne = round(sum(df_ohne['netzbezug']))
-    einspeisung = round(sum(df['überschuss']))
-    einspeisung_ohne = round(sum(df_ohne['überschuss']))
+    einspeisung = round(sum(df['einspeisung']))
+    einspeisung_ohne = round(sum(df_ohne['einspeisung']))
     strombedarf = round(sum(df['Strombedarf']))
     pv_to_ev = round(sum(df['PV to EV']))
     km = round(sum(df['ev distanz']))
@@ -822,8 +822,8 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
     pv = round(sum(df['PV Ertrag']))
     netzbezug = round(sum(df['netzbezug']))
     netzbezug_ohne = round(sum(df_ohne['netzbezug']))
-    einspeisung = round(sum(df['überschuss']))
-    einspeisung_ohne = round(sum(df_ohne['überschuss']))
+    einspeisung = round(sum(df['einspeisung']))
+    einspeisung_ohne = round(sum(df_ohne['einspeisung']))
     strombedarf = round(sum(df['Strombedarf']))
     pv_to_ev = round(sum(df['PV to EV']))
     pv_to_bs = round(sum(df['bs ladung']))
