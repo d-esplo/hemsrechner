@@ -40,55 +40,148 @@ def get_pufferspeicher(heizlast, T_n_vor, T_n_rueck):
         if V_sp_einfach <= VIH_300:
             V_ps = VIH_300
             PS_verlust = 1.52/24 # kWh/24h
+            T_max = 85
         else:
             V_ps = TWL_PR_500
             PS_verlust = 1.4/24 # kWh/24h
+            T_max = 95
     elif V_sp_einfach <= VPS_200:
         if V_sp_einfach <= VPS_100:
             V_ps = VPS_100
             PS_verlust = 0.81/24 # kWh/24h
+            T_max = 95
         else:
             V_ps= VPS_200
             PS_verlust = 1.4/24 # kWh/24h
+            T_max = 95
 
     # Wärmegehalt Pufferspeicher
     dichte = 1 # kg/m^3
     c_wasser = 4.18 # kJ/(kg·K)
     Q_ps = round(V_ps*dichte*c_wasser*(T_n_vor - T_n_rueck)/3600, 3)
+    
+    # Vorlauftemperatur bei Überhitzung (+5°C)
+    T_u_vor = T_n_vor + 5
 
-    return V_ps, PS_verlust, Q_ps
+    # Wärmegehalt bei Überhitzung
+    Q_ps_ueber = round(V_ps*dichte*c_wasser*(T_u_vor - T_n_rueck)/3600, 3)
+
+    # Max Wärmegehalt 
+    Q_ps_max = round(V_ps*dichte*c_wasser*(T_max - T_n_rueck)/3600, 3)
+
+    return V_ps, PS_verlust, Q_ps, Q_ps_ueber, Q_ps_max
+
+def get_max_heizleistung(wp_groesse, df):
+    max_hz = pd.read_csv(f'./Inputs/inter_max_Heizleistung_NIBE2040-{wp_groesse}.csv', index_col=0)
+
+    # alles auf float
+    max_hz.index = max_hz.index.astype(float)
+    max_hz.columns = max_hz.columns.astype(float)
+
+    df['max Heizleistung'] = None
+
+    for i, row in df.iterrows():
+        T_aussen = row['T_aussen']
+        T_vor = row['T_vor']
+
+        # Nächste-Nachbar-Methode
+        if T_aussen not in max_hz.index:
+            T_aussen = min(max_hz.index, key=lambda x: abs(x - T_aussen))
+        if T_vor not in max_hz.columns:
+            T_vor = min(max_hz.columns, key=lambda x: abs(x - T_vor))
+
+        try:
+            df.at[i, 'max Heizleistung'] = max_hz.loc[T_aussen, T_vor]
+        except KeyError:
+            df.at[i, 'max Heizleistung'] = np.nan  
+
+    return df
 
 # Berechnen - immer vorher df aus def ohne_pv erstellen 
-def ohne_2(df, Q_ps, PS_verlust):
-## WP und PS Zusammenfügen
+def ohne_2(df, Q_ps, Q_ps_max, V_ps, PS_verlust, nennheizleistung):
+    ## WP und PS Zusammenfügen
     df['Wärmegehalt PS'] = np.nan
+    df['Ladung PS'] = np.nan
+    df['Verlust'] = np.nan
+    df['Deckung'] = np.nan
     df['Q_ps_neu'] = 0.0
-    df['Ladezustand PS'] = np.nan
-    df['Heizleistung neu'] = np.nan
-    df['temp_mittel'] = df['T_aussen'].rolling(window=24, min_periods=1).mean()
-    df['Wärmeverlust'] = np.nan
+    df['Heizleistung WP'] = np.nan
+    df['temp_mittel'] = df['T_aussen'].rolling(window=48, min_periods=1).mean()
+    df['wärmebedarf_mittel'] = df['Heizwärmebedarf'].rolling(window=3, min_periods=1).mean()
     df['State'] = 0
 
     waerme_ps = Q_ps
-    V = 300
     d = 1
     c_wasser = 4.18
+    ps_80 = Q_ps*0.8
+    ps_50 = Q_ps*0.5
+    ps_30 = Q_ps*0.3
+    wp = 0
 
     for i, row in df.iterrows():  # ab der zweiten Zeile
+        volllast = row['max Heizleistung']
+        teillast = volllast/2
         temp_mittel = row['temp_mittel']
+        hzw_mittel = row['wärmebedarf_mittel']
         heizwaermebedarf = row['Heizwärmebedarf']
-        heizleistung = row['Heizleistung']
         t_d = row['T_vor'] - row['T_rueck']
-        verlust = 0.0
         lade_ps = 0.0
-        heizleistung_neu = 0.0
-        state = 0.0
-        hz = 0.0
-        ladezustand = 1
+        state = 0
+        verlust = 0
+        deckung = 0
+
+        if temp_mittel < 15:
+            if hzw_mittel > teillast:
+                if waerme_ps - heizwaermebedarf < ps_30:
+                    wp = volllast
+                    state = 1
+                elif waerme_ps - heizwaermebedarf < ps_50:
+                    wp = teillast
+                    state = 2
+                else:
+                    wp = 0
+                    state = 0
+            elif hzw_mittel < teillast:
+                if waerme_ps - heizwaermebedarf < ps_30:
+                    wp = teillast
+                    state = 3
+                elif waerme_ps - heizwaermebedarf < ps_50:
+                    wp = teillast/2
+                    state = 4
+                else:
+                    wp = 0
+                    state = 0
+            deckung = heizwaermebedarf - wp - waerme_ps
+            lade_ps = wp - PS_verlust - heizwaermebedarf 
+            waerme_ps += lade_ps
+        else:
+            # "T_mittel > 15° <- wird nicht geheizt
+            wp = 0
+            lade_ps = PS_verlust
+            waerme_ps -= lade_ps
+            state = 0
+
+        if waerme_ps < 0:
+            waerme_ps = 0
         
+        if waerme_ps > Q_ps_max:
+            verlust = waerme_ps - Q_ps_max
+            waerme_ps = Q_ps_max
 
-        #if temp_mittel <= 15:
+        if deckung < 0:
+            deckung = 0
 
+        df.loc[i, 'Wärmegehalt PS'] = waerme_ps
+        df.loc[i, 'Ladung PS'] = lade_ps
+        df.loc[i, 'Verlust'] = verlust
+        df.loc[i, 'State'] = state
+        df.loc[i, 'Q_ps_neu'] = V_ps*d*c_wasser*t_d/3600
+        df.loc[i, 'Heizleistung WP'] = wp
+        df.loc[i, 'Deckung'] = deckung
+
+    
+    df.loc[df['Heizleistung WP'] == 0, 'COP'] = np.nan
+    df['Strombedarf WP'] = (df['Heizleistung WP'] / df['COP']).fillna(0).astype(float)
     return df
 
 def ohne_pv(df, Q_ps, PS_verlust, nenn_heizleistung):
