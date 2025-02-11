@@ -121,13 +121,13 @@ def get_lastprofile(waermebedarf, strombedarf, twebedarf, flaeche, TRY_region, a
 
         # Zuordnung der Zielspalten zu den entsprechenden Zeilen in tagesenergiebedarf
         zeilen_zuordnung = {
-        'Heizwärme normiert ': 'heiz_tag',  # Heizwärme normiert wird mit heiz_tag verknüpft
+        'Heizwärme normiert': 'heiz_tag',  # Heizwärme normiert wird mit heiz_tag verknüpft
         'Strombedarf normiert': 'strom_tag',  # Strombedarf normiert wird mit strom_tag verknüpft
         'Warmwasser normiert': 'twe_tag'  # Warmwasser normiert wird mit twe_tag verknüpft
         }
 
         # Schleife durch die Zielspalten und Skalierung anwenden
-        for spalte in ['Heizwärme normiert ', 'Strombedarf normiert', 'Warmwasser normiert']:
+        for spalte in ['Heizwärme normiert', 'Strombedarf normiert', 'Warmwasser normiert']:
             if spalte in df.columns:  # Überprüfen, ob die Spalte in der Tabelle existiert
                 # Verwende die Zeilenbezeichnung aus der Zuordnung, um den richtigen Faktor zu erhalten
                 zeilenbezeichnung = zeilen_zuordnung[spalte]
@@ -182,7 +182,7 @@ def get_lastprofile(waermebedarf, strombedarf, twebedarf, flaeche, TRY_region, a
             # Hole die entsprechende Tabelle aus dem Dictionary
             # profil = ergebnisse[typtag]
             # Kopiere nur die gewünschten Spalten aus der Tabelle
-            profil = ergebnisse[typtag][["Strombedarf normiert", "Warmwasser normiert", "Heizwärme normiert "]]
+            profil = ergebnisse[typtag][["Strombedarf normiert", "Warmwasser normiert", "Heizwärme normiert"]]
 
 
             # Debug-Ausgabe, wenn das Profil gefunden wird
@@ -209,7 +209,7 @@ def get_lastprofile(waermebedarf, strombedarf, twebedarf, flaeche, TRY_region, a
         columns={
             "Strombedarf normiert": "Strombedarf",
             "Warmwasser normiert": "Warmwasserbedarf",
-            "Heizwärme normiert ": "Heizwärmebedarf"
+            "Heizwärme normiert": "Heizwärmebedarf"
         }
     )
 
