@@ -97,7 +97,6 @@ def ohne_pv(df, Q_ps, Q_ps_max, PS_verlust):
     df['Ladung PS'] = np.nan
     df['Verlust'] = np.nan
     df['Deckung'] = np.nan
-    df['Q_ps_neu'] = 0.0
     df['Heizleistung WP'] = np.nan
     df['temp_mittel'] = df['T_aussen'].rolling(window=48, min_periods=1).mean()
     df['wärmebedarf_mittel'] = df['Heizwärmebedarf'].rolling(window=3, min_periods=1).mean()
@@ -114,7 +113,6 @@ def ohne_pv(df, Q_ps, Q_ps_max, PS_verlust):
         temp_mittel = row['temp_mittel']
         hzw_mittel = row['wärmebedarf_mittel']
         heizwaermebedarf = row['Heizwärmebedarf']
-        t_d = row['T_vor'] - row['T_rueck']
         lade_ps = 0.0
         state = 0
         verlust = 0
@@ -323,6 +321,7 @@ def mit_pv(df, pv):
         else:
             ueberschuss = 0
             eigenverbrauch = pv_ertrag
+            netzbezug = strombedarf - pv_ertrag
 
         # Step 2: Überschuss für WP (prio)
         if ueberschuss > 0 and p_el_wp > 0:
@@ -334,10 +333,12 @@ def mit_pv(df, pv):
                 pv_to_wp = ueberschuss
                 ueberschuss = 0
                 eigenverbrauch += pv_to_wp
+                netzbezug += p_el_wp - pv_to_wp
         else:
             pv_to_wp = 0
+            netzbezug += p_el_wp
 
-        netzbezug = (strombedarf - eigenverbrauch) + (p_el_wp - pv_to_wp)
+        ueberschuss = max(0, ueberschuss)
         if ueberschuss > 0 and netzbezug > 0:
             if netzbezug >= ueberschuss:
                 netzbezug -= ueberschuss
@@ -1107,6 +1108,10 @@ def print_ersparnis_st(ergebnisse):
 # Berechnen mit HEMS
 # Basis Programm
 def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
+    # Ohne HEMS
+    df_ohne_pv = ohne_pv(df.copy(), Q_ps, Q_ps_max, PS_verlust)
+    df_ohne = mit_pv(df_ohne_pv.copy(), pv)
+
     # PV 
     # Index für beide anpassen
     pv.index = pv.index.tz_localize(None)
@@ -1154,6 +1159,7 @@ def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
         eigenverbrauch = 0
         pv_to_wp = 0
         strom_wp = 0
+        netzbezug = 0
 
         # Step 1: Überschuss nach Haushaltstrombedarf
         if pv_ertrag >= strombedarf:
@@ -1162,6 +1168,7 @@ def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
         else:
             ueberschuss = 0
             eigenverbrauch = pv_ertrag
+            netzbezug = strombedarf - pv_ertrag
 
         # Step 2: WP 
         # 2.1 State und Überhitzung für SG-Ready 3 vorbereiten
@@ -1172,7 +1179,6 @@ def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
             state_2 = last_2_states.iloc[i_pos] 
         else:
             state_2 = 0 
-        
         #     Benötigte Heizleistung für die Überhitzung (+5°C)
         wp_ueber = Q_ps_ueber + heizwaermebedarf - waerme_ps + PS_verlust
         # 2.2 Heizbedarf
@@ -1209,10 +1215,11 @@ def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
             lade_ps = wp - PS_verlust - heizwaermebedarf 
             waerme_ps += lade_ps
             # Strom
-            strom_wp = wp / cop
+            strom_wp = max(wp / cop, 0)
             pv_to_wp = min(strom_wp, ueberschuss)
             ueberschuss -= pv_to_wp
             eigenverbrauch += pv_to_wp
+            netzbezug += strom_wp - pv_to_wp
         else:
             # "T_mittel > 15° <- wird nicht geheizt
             wp = 0
@@ -1230,8 +1237,7 @@ def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
         if deckung < 0:
             deckung = 0
 
-
-        netzbezug = max(0, (strombedarf - eigenverbrauch) + (strom_wp - pv_to_wp))
+        ueberschuss = max(0, ueberschuss)
         if ueberschuss > 0 and netzbezug > 0:
             netzbezug_correction = min(netzbezug, ueberschuss)
             netzbezug -= netzbezug_correction
@@ -1251,7 +1257,7 @@ def mit_hems(df, pv, Q_ps, Q_ps_max, Q_ps_ueber, PS_verlust):
         df.loc[i, 'Strombedarf WP'] = strom_wp
 
     df.loc[df['Heizleistung WP'] == 0, 'COP'] = np.nan
-    return df
+    return df, df_ohne
 
 def mit_hems_bs(df, df_ohne, pv, battery_capacity, anlage_groesse):
     # def mit_hems zuerst benutzen, dann der df daraus für diese funktion benutzen
@@ -1397,6 +1403,7 @@ def mit_hems_ev(df, df_ohne, pv, homeoffice):
                 ev_soc += lade
                 ueberschuss -= lade
                 pv_to_ev += lade
+                eigenverbrauch += lade
                 state += 1
             elif 0.9 < ueberschuss < 1.4:
                 # Netz unterstutzt mit max. 500 W den Überschussladen
@@ -1733,16 +1740,15 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
 
     # Summe der aufgeladener Energie im WP
     wp = round(sum(df['PV to WP']))
+    wp_ohne = round(sum(df_ohne['PV to WP']))
 
     # Stromkosten mit PV
     # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
     # strompreis = 0.4135
     stromkosten = round(netzbezug * strompreis, 2)
-    stromkosten_ohne = round(netzbezug_ohne * strompreis, 2)
 
     # Stromkosten ohne PV
-    verbrauch = round(strombedarf + wp_strom, 2)
-    stromkosten_ohne_pv = round(verbrauch * strompreis, 2)
+    stromkosten_ohne = round(netzbezug_ohne * strompreis, 2)
 
     # Einspeisevergütung - Gewinn
     # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
@@ -1755,21 +1761,359 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
-    co2 = round(((netzbezug_ohne-netzbezug)*0.380/1000), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
-    
+    co2 = round(((netzbezug)*0.380), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2_ohne = round(((netzbezug_ohne)*0.380), 2)
+    co2_einsparung = round(co2_ohne - co2, 2)
+
     ergebnisse = {
         'strombedarf': strombedarf,
         'wp': wp_strom,
+        'wp ohne': wp_strom_ohne,
         'pv': pv,
         'eigenverbrauch': eigenverbrauch,
+        'eigenverbrauch ohne': eigenverbrauch_ohne,
         'PV to WP': wp,
+        'PV to WP ohne': wp_ohne,
         'netzbezug': netzbezug,
+        'netzbezug ohne': netzbezug_ohne,
         'einspeisung': einspeisung,
-        'stromkosten_ohne_pv': stromkosten_ohne_pv,
+        'einspeisung ohne': einspeisung_ohne,
+        'stromkosten ohne': stromkosten_ohne,
         'stromkosten': stromkosten,
         'verguetung': verguetung,
+        'verguetung ohne': verguetung_ohne,
         'einsparung': einsparung,
-        'co2': co2
+        'co2': co2,
+        'co2_ohne': co2_ohne,
+        'co2_einsparung': co2_einsparung
     }
     return ergebnisse
 
+def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
+    # Jahresertrag
+    pv = round(sum(df['PV Ertrag']))
+    netzbezug = round(sum(df['netzbezug']))
+    netzbezug_ohne = round(sum(df_ohne['netzbezug']))
+    einspeisung = round(sum(df['einspeisung']))
+    einspeisung_ohne = round(sum(df_ohne['einspeisung']))
+    strombedarf = round(sum(df['Strombedarf']))
+    wp_strom = round(sum(df['Strombedarf WP']))
+    wp_strom_ohne = round(sum(df_ohne['Strombedarf WP']))
+    bs = round(sum(df['battery_charge']))
+    bs_ohne = round(sum(df_ohne['battery_charge']))
+
+    # Eingenverbrauch der PV-Produktion
+    eigenverbrauch = round(sum(df['eigenverbrauch']))
+    eigenverbrauch_ohne = round(sum(df_ohne['eigenverbrauch']))
+
+    # Summe der aufgeladener Energie im WP
+    wp = round(sum(df['PV to WP']))
+    wp_ohne = round(sum(df_ohne['PV to WP']))
+    bs_to_wp = round(sum(df['BS to WP']))
+    bs_to_wp_ohne = round(sum(df_ohne['BS to WP']))
+
+    # Stromkosten mit PV
+    # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
+    # strompreis = 0.4135
+    stromkosten = round(netzbezug * strompreis, 2)
+    stromkosten_ohne = round(netzbezug_ohne * strompreis, 2)
+
+    # Einspeisevergütung - Gewinn
+    # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
+    if anlage_groesse <= 10:
+        einspeiseverguetung = 0.0796
+    else:
+        einspeiseverguetung = 0.0689    
+    verguetung = round(einspeisung * einspeiseverguetung, 2)
+    verguetung_ohne = round(einspeisung_ohne * einspeiseverguetung, 2)
+
+    # Ersparnis
+    einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
+    co2 = round(((netzbezug)*0.380), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2_ohne = round(((netzbezug_ohne)*0.380), 2)
+    co2_einsparung = round(co2_ohne - co2, 2)
+
+    ergebnisse = {
+        'strombedarf': strombedarf,
+        'wp': wp_strom,
+        'wp ohne': wp_strom_ohne,
+        'bs': bs,
+        'bs ohne': bs_ohne,
+        'pv': pv,
+        'eigenverbrauch': eigenverbrauch,
+        'eigenverbrauch ohne': eigenverbrauch_ohne,
+        'PV to WP': wp,
+        'PV to WP ohne': wp_ohne,
+        'BS to WP': bs_to_wp,
+        'BS to WP ohne' : bs_to_wp_ohne,
+        'netzbezug': netzbezug,
+        'netzbezug ohne': netzbezug_ohne,
+        'einspeisung': einspeisung,
+        'einspeisung ohne': einspeisung_ohne,
+        'stromkosten ohne': stromkosten_ohne,
+        'stromkosten': stromkosten,
+        'verguetung': verguetung,
+        'verguetung ohne': verguetung_ohne,
+        'einsparung': einsparung,
+        'co2': co2,
+        'co2_ohne': co2_ohne,
+        'co2_einsparung': co2_einsparung
+    }
+    return ergebnisse
+
+def ersparnis_hems_ev(df, df_ohne, anlage_groesse, strompreis):
+    # Jahresertrag
+    pv = round(sum(df['PV Ertrag']))
+    netzbezug = round(sum(df['netzbezug']))
+    netzbezug_ohne = round(sum(df_ohne['netzbezug']))
+    einspeisung = round(sum(df['einspeisung']))
+    einspeisung_ohne = round(sum(df_ohne['einspeisung']))
+    strombedarf = round(sum(df['Strombedarf']))
+    wp_strom = round(sum(df['Strombedarf WP']))
+    wp_strom_ohne = round(sum(df_ohne['Strombedarf WP']))
+    ev_strom = round(sum(df['EV Ladung']))
+    ev_strom_ohne = round(sum(df_ohne['EV Ladung']))
+
+    # Eingenverbrauch der PV-Produktion
+    eigenverbrauch = round(sum(df['eigenverbrauch']))
+    eigenverbrauch_ohne = round(sum(df_ohne['eigenverbrauch']))
+
+    # Summe der aufgeladener Energie im WP
+    wp = round(sum(df['PV to WP']))
+    wp_ohne = round(sum(df_ohne['PV to WP']))
+    ev = round(sum(df['PV to EV']))
+    ev_ohne = round(sum(df_ohne['PV to EV']))
+
+    # Stromkosten mit PV
+    # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
+    # strompreis = 0.4135
+    stromkosten = round(netzbezug * strompreis, 2)
+    stromkosten_ohne = round(netzbezug_ohne * strompreis, 2)
+
+    # Einspeisevergütung - Gewinn
+    # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
+    if anlage_groesse <= 10:
+        einspeiseverguetung = 0.0796
+    else:
+        einspeiseverguetung = 0.0689    
+    verguetung = round(einspeisung * einspeiseverguetung, 2)
+    verguetung_ohne = round(einspeisung_ohne * einspeiseverguetung, 2)
+
+    # Ersparnis
+    einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
+    co2 = round(((netzbezug)*0.380), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2_ohne = round(((netzbezug_ohne)*0.380), 2)
+    co2_einsparung = round(co2_ohne - co2, 2)
+
+    ergebnisse = {
+        'strombedarf': strombedarf,
+        'wp': wp_strom,
+        'wp ohne': wp_strom_ohne,
+        'ev': ev_strom,
+        'ev ohne': ev_strom_ohne,
+        'pv': pv,
+        'eigenverbrauch': eigenverbrauch,
+        'eigenverbrauch ohne': eigenverbrauch_ohne,
+        'PV to WP': wp,
+        'PV to WP ohne': wp_ohne,
+        'PV to EV': ev,
+        'PV to EV ohne' : ev_ohne,
+        'netzbezug': netzbezug,
+        'netzbezug ohne': netzbezug_ohne,
+        'einspeisung': einspeisung,
+        'einspeisung ohne': einspeisung_ohne,
+        'stromkosten ohne': stromkosten_ohne,
+        'stromkosten': stromkosten,
+        'verguetung': verguetung,
+        'verguetung ohne': verguetung_ohne,
+        'einsparung': einsparung,
+        'co2': co2,
+        'co2_ohne': co2_ohne,
+        'co2_einsparung': co2_einsparung
+    }
+    return ergebnisse
+    
+def ersparnis_hems_bsev(df, df_ohne, anlage_groesse, strompreis):
+    # Jahresertrag
+    pv = round(sum(df['PV Ertrag']))
+    netzbezug = round(sum(df['netzbezug']))
+    netzbezug_ohne = round(sum(df_ohne['netzbezug']))
+    einspeisung = round(sum(df['einspeisung']))
+    einspeisung_ohne = round(sum(df_ohne['einspeisung']))
+    strombedarf = round(sum(df['Strombedarf']))
+    wp_strom = round(sum(df['Strombedarf WP']))
+    wp_strom_ohne = round(sum(df_ohne['Strombedarf WP']))
+    ev_strom = round(sum(df['EV Ladung']))
+    ev_strom_ohne = round(sum(df_ohne['EV Ladung']))
+    bs = round(sum(df['battery_charge']))
+    bs_ohne = round(sum(df_ohne['battery_charge']))
+
+    # Eingenverbrauch der PV-Produktion
+    eigenverbrauch = round(sum(df['eigenverbrauch']))
+    eigenverbrauch_ohne = round(sum(df_ohne['eigenverbrauch']))
+
+    # Summe der aufgeladener Energie im WP
+    wp = round(sum(df['PV to WP']))
+    wp_ohne = round(sum(df_ohne['PV to WP']))
+    ev = round(sum(df['PV to EV']))
+    ev_ohne = round(sum(df_ohne['PV to EV']))
+    bs_to_wp = round(sum(df['BS to WP']))
+    bs_to_wp_ohne = round(sum(df_ohne['BS to WP']))
+    bs_to_ev = round(sum(df['BS to EV']))
+    bs_to_ev_ohne = round(sum(df_ohne['BS to EV']))
+
+    # Stromkosten mit PV
+    # Strompreis 2024: 41,35 Cent/kWh (https://www.bdew.de/service/daten-und-grafiken/bdew-strompreisanalyse/)
+    # strompreis = 0.4135
+    stromkosten = round(netzbezug * strompreis, 2)
+    stromkosten_ohne = round(netzbezug_ohne * strompreis, 2)
+
+    # Einspeisevergütung - Gewinn
+    # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
+    if anlage_groesse <= 10:
+        einspeiseverguetung = 0.0796
+    else:
+        einspeiseverguetung = 0.0689    
+    verguetung = round(einspeisung * einspeiseverguetung, 2)
+    verguetung_ohne = round(einspeisung_ohne * einspeiseverguetung, 2)
+
+    # Ersparnis
+    einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
+    co2 = round(((netzbezug)*0.380), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2_ohne = round(((netzbezug_ohne)*0.380), 2)
+    co2_einsparung = round(co2_ohne - co2, 2)
+
+    ergebnisse = {
+        'strombedarf': strombedarf,
+        'wp': wp_strom,
+        'wp ohne': wp_strom_ohne,
+        'ev': ev_strom,
+        'ev ohne': ev_strom_ohne,
+        'bs': bs,
+        'bs ohne': bs_ohne,
+        'pv': pv,
+        'eigenverbrauch': eigenverbrauch,
+        'eigenverbrauch ohne': eigenverbrauch_ohne,
+        'PV to WP': wp,
+        'PV to WP ohne': wp_ohne,
+        'PV to EV': ev,
+        'PV to EV ohne' : ev_ohne,
+        'BS to WP': bs_to_wp,
+        'BS to WP ohne' : bs_to_wp_ohne,
+        'BS to EV': bs_to_ev,
+        'BS to EV ohne' : bs_to_ev_ohne,
+        'netzbezug': netzbezug,
+        'netzbezug ohne': netzbezug_ohne,
+        'einspeisung': einspeisung,
+        'einspeisung ohne': einspeisung_ohne,
+        'stromkosten ohne': stromkosten_ohne,
+        'stromkosten': stromkosten,
+        'verguetung': verguetung,
+        'verguetung ohne': verguetung_ohne,
+        'einsparung': einsparung,
+        'co2': co2,
+        'co2_ohne': co2_ohne,
+        'co2_einsparung': co2_einsparung
+    }
+    return ergebnisse
+
+# Print
+def print_ersparnis_hems(ergebnisse):
+    def print_if_available(label, key):
+        if key in ergebnisse and ergebnisse[key] is not None:
+            print(f"{label}: {ergebnisse[key]}")
+
+    print_if_available('Haushaltsstrombedarf in kWh', 'strombedarf')
+    print_if_available('Jahresertrag in kWh', 'pv')
+    print('')  # Leere Zeile zur Trennung
+    print('Ohne HEMS')  
+    print_if_available('Wärmepumpe Strombedarf in kWh', 'wp ohne')
+    print_if_available('EV Strombedarf in kWh', 'ev ohne')
+    print('')
+    print_if_available('Geladene PV-Strom in Wärmepumpe in kWh', 'PV to WP ohne')
+    print_if_available('Geladene PV-Strom in Batteriespeicher in kWh', 'bs ohne')
+    print_if_available('Geladene PV-Strom in Elektroauto in kWh', 'PV to EV ohne')
+    print('')
+    print_if_available('Geladene BS-Strom in Wärmepumpe in kWh', 'BS to WP ohne')
+    print_if_available('Geladene BS-Strom in Elektroauto in kWh', 'BS to EV ohne')
+    print('')
+    print_if_available('Netzbezug in kWh', 'netzbezug ohne')
+    print_if_available('Stromkosten in €/a', 'stromkosten ohne')
+    print_if_available('Einspeisung ins Netz in kWh', 'einspeisung ohne')
+    print_if_available('Einspeisevergütung in €/a', 'verguetung ohne')
+    print_if_available('Eigenverbrauch in kWh', 'eigenverbrauch ohne')
+    print_if_available('kg CO₂/a', 'co2_ohne')
+    print('')
+    print('Mit HEMS') 
+    print_if_available('Wärmepumpe Strombedarf in kWh', 'wp')
+    print_if_available('EV Strombedarf in kWh', 'ev')
+    print('')
+    print_if_available('Geladene PV-Strom in Wärmepumpe in kWh', 'PV to WP')
+    print_if_available('Geladene PV-Strom in Batteriespeicher in kWh', 'bs')
+    print_if_available('Geladene PV-Strom in Elektroauto in kWh', 'PV to EV')
+    print('')
+    print_if_available('Geladene BS-Strom in Wärmepumpe in kWh', 'BS to WP')
+    print_if_available('Geladene BS-Strom in Elektroauto in kWh', 'BS to EV')
+    print('')
+    print_if_available('Netzbezug in kWh', 'netzbezug')
+    print_if_available('Stromkosten in €/a', 'stromkosten')
+    print_if_available('Einspeisung ins Netz in kWh', 'einspeisung')
+    print_if_available('Einspeisevergütung in €/a', 'verguetung')
+    print_if_available('Eigenverbrauch in kWh', 'eigenverbrauch')
+    print_if_available('kg CO₂/a', 'co2')
+    print('')  
+    print_if_available('Stromkosten Einsparung in €/a', 'einsparung')
+    print_if_available('CO2 Einsparung kg CO₂/a', 'co2_einsparung')
+
+def print_ersparnis_hems_st(ergebnisse):
+     # Helper-Funktion: nur vorhandene Schlüssel anzeigen
+    def print_if_available(label, key):
+        if key in ergebnisse and ergebnisse[key] is not None:
+            st.write(f"- {label}: {ergebnisse[key]}")
+    
+    st.subheader("Ergebnisse", divider=True)
+    row1 = st.columns(3)  # Erste Zeile: 3 Spalten
+    row2 = st.columns(3)  # Zweite Zeile: 3 Spalten
+
+    with row1[0]:
+        with st.container(border=True):
+            st.write('##### Strombedarf [kWh]')
+            print_if_available('Haushalt', 'strombedarf')
+            print_if_available('WP', 'wp')
+            print_if_available('EV', 'ev')
+    
+    with row1[1]:
+        with st.container(border=True):
+            st.write("##### PV [kWh]")
+            print_if_available('Jahresertrag', 'pv')
+            print_if_available('Eigenverbrauch', 'eigenverbrauch')
+            print_if_available('PV to EV', 'PV to EV')
+
+    with row1[2]:
+        with st.container(border=True):
+            st.write("##### BS [kWh]")
+            print_if_available('PV to BS', 'bs')
+            print_if_available('BS to EV', 'BS to EV')
+
+    with row2[0]:
+        with st.container(border=True):
+            st.write("##### Ohne HEMS")
+            print_if_available('Netzbezug [kWh]', 'netzbezug ohne')
+            print_if_available('Einspeisung [kWh]', 'einspeisung ohne')
+            print_if_available('Einspeisevergütung [€/a]', 'verguetung ohne')
+            print_if_available('Stromkosten [€/a]', 'stromkosten ohne')
+
+    with row2[1]:
+        with st.container(border=True):
+            st.write("##### Mit HEMS")
+            print_if_available('Netzbezug [kWh]', 'netzbezug')
+            print_if_available('Einspeisung [kWh]', 'einspeisung')
+            print_if_available('Einspeisevergütung [€/a]', 'verguetung')
+            print_if_available('Stromkosten [€/a]', 'stromkosten')
+            print_if_available('Stromkosten [€/a]', 'stromkosten_bs')
+
+    with row2[2]:
+            with st.container(border=True):
+                st.write("##### Einsparung [€/a]")
+                print_if_available('mit HEMS [€/a]', 'einsparung')
+                print_if_available('mit HEMS [kg CO₂/a]', 'co2')

@@ -795,7 +795,7 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
-    co2 = round(((netzbezug_ohne-netzbezug)*0.380/1000), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2 = round(((netzbezug_ohne-netzbezug)*0.380), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
     ergebnisse = {
         'strombedarf': strombedarf,
         'ev': ev,
