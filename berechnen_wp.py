@@ -474,6 +474,7 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
         df.loc[i, 'PV to WP'] = pv_to_wp
         df.loc[i, 'BS to WP'] = bs_to_wp
         df.loc[i, 'battery_soc'] = battery_soc
+        df.loc[i, 'BS %'] = battery_soc/battery_capacity
     return df
 
 def mit_pvev(df, pv, homeoffice):
@@ -596,6 +597,7 @@ def mit_pvev(df, pv, homeoffice):
         df.loc[i, 'EV Ladung'] = ladeleistung
         df.at[i, 'eigenverbrauch'] = float(eigenverbrauch)
         df.at[i, 'netzbezug'] = netzbezug
+        df.loc[i, 'EV %'] = ev_soc/batteriekapazitaet
     return df
 
 def mit_pvbsev(df, pv, anlage_groesse, battery_capacity, homeoffice):
@@ -646,9 +648,6 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity, homeoffice):
     min_soc = 1
     max_soc = battery_capacity
     battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
-
-    if anlage_groesse<battery_capacity:
-        battery_capacity = anlage_groesse
 
     for i, row in df.iterrows():
         pv_ertrag = row['PV Ertrag']
@@ -808,6 +807,8 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity, homeoffice):
         df.loc[i, 'BS to EV'] = bs_to_ev
         df.loc[i, 'BS to Haushalt'] = bs_to_str
         df.loc[i, 'battery_soc'] = battery_soc
+        df.loc[i, 'EV %'] = ev_soc/batteriekapazitaet
+        df.loc[i, 'BS %'] = battery_soc/battery_capacity
     return df
     
 # Ersparnis 
@@ -2087,33 +2088,38 @@ def print_ersparnis_hems_st(ergebnisse):
             st.write("##### PV [kWh]")
             print_if_available('Jahresertrag', 'pv')
             print_if_available('Eigenverbrauch', 'eigenverbrauch')
+            print_if_available('PV to WP', 'PV to WP')
+            print_if_available('PV to BS', 'bs')
             print_if_available('PV to EV', 'PV to EV')
 
     with row1[2]:
         with st.container(border=True):
             st.write("##### BS [kWh]")
             print_if_available('PV to BS', 'bs')
+            print_if_available('BS to WP', 'BS to WP')
             print_if_available('BS to EV', 'BS to EV')
 
     with row2[0]:
         with st.container(border=True):
             st.write("##### Ohne HEMS")
-            print_if_available('Netzbezug [kWh]', 'netzbezug ohne')
             print_if_available('Einspeisung [kWh]', 'einspeisung ohne')
             print_if_available('Einspeisevergütung [€/a]', 'verguetung ohne')
+            print_if_available('Netzbezug [kWh]', 'netzbezug ohne')
             print_if_available('Stromkosten [€/a]', 'stromkosten ohne')
+            print_if_available('CO₂-Emissionen [kg CO₂/a]', 'co2_ohne')
 
     with row2[1]:
         with st.container(border=True):
             st.write("##### Mit HEMS")
-            print_if_available('Netzbezug [kWh]', 'netzbezug')
             print_if_available('Einspeisung [kWh]', 'einspeisung')
             print_if_available('Einspeisevergütung [€/a]', 'verguetung')
+            print_if_available('Netzbezug [kWh]', 'netzbezug')
             print_if_available('Stromkosten [€/a]', 'stromkosten')
             print_if_available('Stromkosten [€/a]', 'stromkosten_bs')
+            print_if_available('CO₂-Emissionen [kg CO₂/a]', 'co2')
 
     with row2[2]:
             with st.container(border=True):
                 st.write("##### Einsparung [€/a]")
                 print_if_available('mit HEMS [€/a]', 'einsparung')
-                print_if_available('mit HEMS [kg CO₂/a]', 'co2')
+                print_if_available('mit HEMS [kg CO₂/a]', 'co2_einsparung')
