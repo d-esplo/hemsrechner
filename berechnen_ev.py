@@ -769,6 +769,7 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
     einspeisung_ohne = round(sum(df_ohne['einspeisung']))
     strombedarf = round(sum(df['Strombedarf']))
     pv_to_ev = round(sum(df['PV to EV']))
+    pv_to_ev_ohne = round(sum(df_ohne['PV to EV']))
     km = round(sum(df['ev distanz']))
 
     # Eingenverbrauch der PV-Produktion
@@ -795,13 +796,16 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten - verguetung), 2)
-    co2 = round(((netzbezug_ohne-netzbezug)*0.380), 2) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2 = netzbezug*0.38
+    co2_ohne = netzbezug_ohne*0.38
+    co2_einsparung = (netzbezug_ohne-netzbezug)*0.380 # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
     ergebnisse = {
         'strombedarf': strombedarf,
         'ev': ev,
         'km': km,
         'pv': pv,
         'PV to EV': pv_to_ev,
+        'PV to EV ohne': pv_to_ev_ohne,
         'eigenverbrauch': eigenverbrauch,
         'eigenverbaruch ohne': eigenverbrauch_ohne,
         'netzbezug': netzbezug,
@@ -813,7 +817,9 @@ def ersparnis_hems(df, df_ohne, anlage_groesse, strompreis):
         'verguetung': verguetung,
         'verguetung ohne': verguetung_ohne,
         'einsparung': einsparung,
-        'co2': co2 
+        'co2': co2,
+        'co2_ohne': co2_ohne,
+        'co2_einsparung': co2_einsparung
     }
     return ergebnisse
 
@@ -826,8 +832,12 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
     einspeisung_ohne = round(sum(df_ohne['einspeisung']))
     strombedarf = round(sum(df['Strombedarf']))
     pv_to_ev = round(sum(df['PV to EV']))
+    pv_to_ev_ohne = round(sum(df_ohne['PV to EV']))
     pv_to_bs = round(sum(df['bs ladung']))
+    pv_to_bs_ohne = round(sum(df_ohne['bs ladung']))
     bs_to_ev = round(sum(df['BS to EV']))
+    bs_to_ev_ohne = round(sum(df_ohne['BS to EV']))
+
     km = round(sum(df['ev distanz']))
 
     # Eingenverbrauch der PV-Produktion
@@ -854,7 +864,9 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round((stromkosten_ohne-verguetung_ohne) - (stromkosten_bs - verguetung), 2)
-    co2 = (netzbezug_ohne-netzbezug*0.380) # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh
+    co2 = netzbezug*0.38
+    co2_ohne = netzbezug_ohne*0.38
+    co2_einsparung = (netzbezug_ohne-netzbezug)*0.380 # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh # CO₂-Emissionsfaktor Strommix 2023: 380 g/kWh    co2_einsparungg = (netzbezug
     ergebnisse = {
         'strombedarf': strombedarf,
         'ev': ev,
@@ -863,6 +875,9 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
         'bs': pv_to_bs,
         'PV to EV': pv_to_ev,
         'BS to EV': bs_to_ev,
+        'bs ohne': pv_to_bs_ohne,
+        'PV to EV ohne': pv_to_ev_ohne,
+        'BS to EV ohne': bs_to_ev_ohne,
         'eigenverbrauch': eigenverbrauch,
         'eigenverbaruch ohne': eigenverbrauch_ohne,
         'netzbezug': netzbezug,
@@ -874,7 +889,9 @@ def ersparnis_hems_bs(df, df_ohne, anlage_groesse, strompreis):
         'verguetung': verguetung,
         'verguetung ohne': verguetung_ohne,
         'einsparung': einsparung,
-        'co2': co2
+        'co2': co2,
+        'co2_ohne': co2_ohne,
+        'co2_einsparung': co2_einsparung
     }
     return ergebnisse
 
