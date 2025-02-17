@@ -116,10 +116,13 @@ else:
     df_plt = df_pv.copy()
     berechnen_bs.print_ersparnis_st(ergebnisse)
 ''
-km = round(df_plt['ev distanz'].sum())
-'Annahmen:'
-f'- EV wird {km} km gefahren.'
-'- EV wird nur zuhause geladen'
+
+if 'ev distanz' in df_plt and not df_plt['ev distanz'].isna().all():
+    km = round(df_plt['ev distanz'].sum())
+    print('Annahmen:')
+    print(f'- EV wird {km} km gefahren.')
+    print('- EV wird nur zuhause geladen')
+
 ''
 ## PLOTS ##
 
