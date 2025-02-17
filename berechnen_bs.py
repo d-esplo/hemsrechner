@@ -2,16 +2,10 @@ import pandas as pd
 import streamlit as st
 
 def mit_pv(df, pv, anlage_groesse, battery_capacity):
-    # Remove timezone information from `pv`
     pv.index = pv.index.tz_localize(None)
-
-    # Ensure `df` index is datetime
-    df.index = pd.to_datetime(df.index)
-
-    # Align `pv` with `df` by reindexing and filling any missing values
-    pv_aligned = pv.reindex(df.index).fillna(0)
-
-    # Add PV data to the DataFrame
+    df.index = df.index.tz_localize(None)
+    pv_aligned = pv.reindex(df.index)
+    # zu df hinzufugen
     df['PV Ertrag'] = pv_aligned.values.astype(float)
     
     # Battery parameters
