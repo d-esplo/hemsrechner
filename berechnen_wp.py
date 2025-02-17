@@ -383,7 +383,7 @@ def mit_pvbs(df, pv, anlage_groesse, battery_capacity):
     discharge_efficiency = 0.96
     min_soc = 1
     max_soc = battery_capacity
-    battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
+    battery_soc = 0.5*battery_capacity  # Initial state of charge in kWh (50% of battery capacity)
 
     if anlage_groesse<battery_capacity:
         battery_capacity = anlage_groesse
@@ -647,7 +647,7 @@ def mit_pvbsev(df, pv, anlage_groesse, battery_capacity, homeoffice):
     discharge_efficiency = 0.96
     min_soc = 1
     max_soc = battery_capacity
-    battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity)
+    battery_soc = battery_capacity*0.5 # Initial state of charge in kWh (50% of battery capacity)
 
     for i, row in df.iterrows():
         pv_ertrag = row['PV Ertrag']
@@ -1276,7 +1276,7 @@ def mit_hems_bs(df, df_ohne, pv, battery_capacity, anlage_groesse):
     discharge_efficiency = 0.96
     min_soc = 1
     max_soc = battery_capacity
-    battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity) n
+    battery_soc = 0.5 * battery_capacity # Initial state of charge in kWh (50% of battery capacity) n
     
     # Simulation loop
     for i, row in df.iterrows():
@@ -1500,7 +1500,7 @@ def mit_hems_bsev(df, df_ohne, pv, battery_capacity, anlage_groesse, homeoffice)
     discharge_efficiency = 0.96
     min_soc = 1
     max_soc = battery_capacity
-    battery_soc = 5  # Initial state of charge in kWh (50% of battery capacity) n
+    battery_soc = 0.5 * battery_capacity # Initial state of charge in kWh (50% of battery capacity) n
     
     # EV Profil
     ev_profil = pd.read_csv(f'./Inputs/ev_homeoffice_{homeoffice}_2014.csv', index_col=0)
