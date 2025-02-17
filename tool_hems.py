@@ -111,7 +111,7 @@ elif 'EV' in selection:
 else:
     df_pv = berechnen_bs.mit_pv(df.copy(), pv, anlage_groesse, battery_capacity)
     ergebnisse = berechnen_bs.ersparnis(df_pv, anlage_groesse, strompreis)
-    plot_data = ['PV Ertrag', 'Strombedarf', 'einspeisung', 'netzbezug']
+    plot_data = ['PV Ertrag', 'Strombedarf', 'netzeinspeisung', 'netzbezug']
     plot_data_2 = ['BS %']
     df_plt = df_pv.copy()
     berechnen_bs.print_ersparnis_st(ergebnisse)
