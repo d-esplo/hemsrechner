@@ -43,9 +43,9 @@ with col2:
         heizung = st.selectbox("Heizung", ("Heizkörper", "Fußbodenheizung"))
 
 # Lastprofile für Strom, Heizung, PV und T_ausssen generieren
-h, w, twe, s = lastprofile_VDI4655.get_jahresenergiebedarf(baujahr, flaeche, anzahl_personen, strombedarf)
+h, w, twe, s = lastprofile_VDI4655.get_jahresenergiebedarf(baujahr, float(flaeche), anzahl_personen, strombedarf)
 TRY_region, T_n_aussen = try_region.get_try_t_n_aussen(int(plz))
-df = lastprofile_VDI4655.get_lastprofile(w, s, twe, flaeche, TRY_region, anzahl_personen)
+df = lastprofile_VDI4655.get_lastprofile(w, s, twe, float(flaeche), TRY_region, anzahl_personen)
 df['T_aussen'] = temperatur_aussen.get_hourly_temperature(plz, 2014)
 pv = pv_profil.get_pv_profil(plz, 2014, anlage_groesse)
 strompreis = strompreis/100
