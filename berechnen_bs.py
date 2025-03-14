@@ -113,8 +113,8 @@ def ersparnis(df, anlage_groesse, strompreis):
     stromkosten = round(netzbezug * strompreis, 2)
 
     # Stromkosten ohne PV
-    verbrauch = round(sum(df['Strombedarf']), 2)
-    stromkosten_ohne_pv = round(verbrauch * strompreis, 2)
+    strombedarf = round(sum(df['Strombedarf']), 2)
+    stromkosten_ohne_pv = round(strombedarf * strompreis, 2)
 
     # Einspeisevergütung - Gewinn
     # Einspeisevergütung ab Feb 2025: bis 10 kWp: 7,96 ct, 10-40 kWp: 6,89 ct  (https://photovoltaik.org/kosten/einspeiseverguetung)
@@ -126,10 +126,15 @@ def ersparnis(df, anlage_groesse, strompreis):
 
     # Ersparnis
     einsparung = round(stromkosten_ohne_pv - (stromkosten - verguetung), 2)
+
+    # CO2
+    co2_ohne = strombedarf*0.38
+    co2 = netzbezug*0.38
+    co2_einsparung = round(co2_ohne - co2)
     
     ergebnisse = {
     'pv': pv,
-    'stromverbrauch' : verbrauch,
+    'strombedarf' : strombedarf,
     'eigenverbrauch': eigenverbrauch,
     'batterie': batterie,
     'pv_direkt': pv_direkt,
@@ -138,7 +143,8 @@ def ersparnis(df, anlage_groesse, strompreis):
     'stromkosten_ohne_pv': stromkosten_ohne_pv,
     'stromkosten': stromkosten,
     'verguetung': verguetung,
-    'einsparung': einsparung
+    'einsparung': einsparung,
+    'co2 einsparung': co2_einsparung
     }
     return ergebnisse
 
@@ -158,67 +164,44 @@ def print_ersparnis(ergebnisse):
 
 def print_ersparnis_st(ergebnisse):
     st.subheader("Ergebnisse", divider=True)
-    row1 = st.columns(3)  # Erste Zeile: 3 Spalten
-    row2 = st.columns(3)  # Zweite Zeile: 3 Spalten
-    # Inhalte der ersten Zeile
+    def print_if_available(label, key):
+            if key in ergebnisse and ergebnisse[key] is not None:
+                st.write(f"- {label}: {ergebnisse[key]}")
+    
+    row1 = st.columns(2)  # Erste Zeile: 2 Spalten
+    row2 = st.columns(2)  # Zweite Zeile: 2 Spalten
+    row3 = st.columns(1)
+
     with row1[0]:
         with st.container(border=True):
-            st.write("Jahresertrag PV in kWh")
-            st.write(ergebnisse.get('pv'))
-
+            st.write('##### Strombedarf [kWh]')
+            print_if_available('Haushalt', 'strombedarf')
+    
     with row1[1]:
         with st.container(border=True):
-            st.write("Eigenverbrauch in kWh")
-            st.write(ergebnisse.get('eigenverbrauch'))
+            st.write("##### PV [kWh]")
+            print_if_available('Jahresertrag', 'pv')
+            print_if_available('Eigenverbrauch', 'eigenverbrauch')
+            print_if_available('PV to BS', 'batterie')
 
-    with row1[2]:
-        with st.container(border=True):
-            st.write("Geladene PV-Strom in Batteriespeicher")
-            st.write(ergebnisse.get('batterie'))
-
-    # Inhalte der zweiten Zeile
     with row2[0]:
         with st.container(border=True):
-            st.write("Strombedarf")
-            st.write(ergebnisse.get('stromverbrauch'))
+            st.write("##### Ohne PV + BS")
+            print_if_available('Netzbezug [kWh]', 'strombedarf')
+            print_if_available('Stromkosten [€/a]', 'stromkosten_ohne_pv')
 
     with row2[1]:
         with st.container(border=True):
-            st.write("Netzbezug in kWh")
-            st.write(ergebnisse.get('netzbezug'))
+            st.write("##### Mit PV + BS")
+            print_if_available('Netzbezug [kWh]', 'netzbezug')
+            print_if_available('Einspeisung [kWh]', 'einspeisung')
+            print_if_available('Einspeisevergütung [€/a]', 'verguetung')
+            print_if_available('Stromkosten [€/a]', 'stromkosten')
 
-    with row2[2]:
-        with st.container(border=True):
-            st.write("Einspeisung ins Netz in kWh")
-            st.write(ergebnisse.get('einspeisung'))
+    with row3[0]:
+            with st.container(border=True):
+                st.write("##### Einsparung [€/a]")
+                print_if_available('mit PV + BS [€/a]', 'einsparung')
+                print_if_available('mit PV + BS [kg CO₂/a]', 'co2 einsparung')
 
-    # Neue Container für Stromkosten
-    st.subheader("Stromkosten")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write("Stromkosten ohne PV in €/a: ", ergebnisse.get('stromkosten_ohne_pv'))
-        st.write("Stromkosten mit PV & BS in €/a: ", ergebnisse.get('stromkosten'))
-
-    with col2:
-        st.write("Einspeisevergütung in €/a: ", ergebnisse.get('verguetung'))
-        st.write("Stromkosten Einsparung in €/a: ", ergebnisse.get('einsparung'))
-
-
-    # for col in row1 + row2:
-    #     tile = col.container(height=120)
-    #     tile.title("Jahresertrag PV in kWh")
-    #     tile.write(ergebnisse.get('pv'))
-
-    #     st.write('Eigenverbrauch in kWh: ', ergebnisse.get('eigenverbrauch'))
-
-    #     st.write('Geladene PV-Strom in Batteriespeicher in kWh: ', ergebnisse.get('batterie'))
-    #     ''
-    #     st.write('Netzbezug in kWh: ', ergebnisse.get('netzbezug'))
-    #     st.write('Einspeisung ins Netz in kWh: ', ergebnisse.get('einspeisung'))
-    #     'Stromkosten:'
-    #     st.write('Stromkosten ohne PV in €/a: ', ergebnisse.get('stromkosten_ohne_pv'))
-    #     st.write('Stromkosten mit PV & BS in €/a: ', ergebnisse.get('stromkosten'))
-    #     st.write('Einspeisevergütung in €/a: ', ergebnisse.get('verguetung'))
-    #     st.write('Stromkosten Einsparung in €/a: ', ergebnisse.get('einsparung'))
-
+   
