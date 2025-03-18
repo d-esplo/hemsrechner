@@ -34,7 +34,7 @@ with col1:
 
 with col2:
    ':blue[Komponenten Auswahl: ]'
-   anlage_groesse = st.number_input("PV Anlage",  value = None, placeholder = 'Größe in kWp')
+   anlage_groesse = st.number_input("PV Anlage (nicht 0)",  value = None, placeholder = 'Größe in kWp')
    komponenten = ["Batteriespeicher", "EV", "Wärmepumpe"]
    selection = st.multiselect("Komponenten", komponenten)
    if "Batteriespeicher" in selection:
